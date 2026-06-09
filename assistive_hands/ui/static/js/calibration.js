@@ -6,6 +6,9 @@ let calibrationPoints = [];
 let currentPointIndex = 0;
 let gazeBuffer = [];
 let calibrationActive = false;
+let calibrationPaused = false;
+let activeSampleInterval = null;
+let calibrationReferenceSize = { width: 1920, height: 1080 };
 const canvas = document.getElementById('calibrationCanvas');
 const ctx = canvas?.getContext('2d');
 
@@ -105,65 +108,27 @@ function updateFaceDetectionUI() {
     const statusDiv = document.getElementById('faceDetectionStatus') || createFaceStatusDisplay();
     
     if (faceDetected && faceQuality > 0.4) {
-        // Face detected and properly positioned
-        statusDiv.innerHTML = `
-            <div style="color: #00FF00; font-weight: bold; font-size: 18px;">
-                ✓ Face Detected
-            </div>
-            <div style="color: #00FF00; font-size: 14px;">
-                Eyes Open: ${(eyeOpenness * 100).toFixed(0)}%
-            </div>
-        `;
+        statusDiv.className = 'calibration-face-status is-good';
+        statusDiv.innerHTML = `<strong>Face Detected</strong><span>Eyes Open: ${(eyeOpenness * 100).toFixed(0)}%</span>`;
+        updateCalibrationState('waiting', 'Ready to calibrate', 'Start when your face is centered.');
         startBtn.disabled = false;
-        startBtn.style.opacity = '1';
-        startBtn.style.cursor = 'pointer';
     } else if (faceDetected) {
-        // Face detected but quality is low
-        statusDiv.innerHTML = `
-            <div style="color: #FFAA00; font-weight: bold; font-size: 18px;">
-                ⚠ Face Detected (Low Quality)
-            </div>
-            <div style="color: #FFAA00; font-size: 14px;">
-                Eyes Open: ${(eyeOpenness * 100).toFixed(0)}%
-            </div>
-            <div style="color: #FFAA00; font-size: 12px;">
-                Open eyes wider for better detection
-            </div>
-        `;
+        statusDiv.className = 'calibration-face-status is-warning';
+        statusDiv.innerHTML = `<strong>Face Detected (Low Quality)</strong><span>Eyes Open: ${(eyeOpenness * 100).toFixed(0)}%. Open eyes wider.</span>`;
+        updateCalibrationState('waiting', 'Waiting for better face tracking', 'Open your eyes wider and improve lighting.');
         startBtn.disabled = true;
-        startBtn.style.opacity = '0.5';
-        startBtn.style.cursor = 'not-allowed';
     } else {
-        // Face not detected
-        statusDiv.innerHTML = `
-            <div style="color: #FF0000; font-weight: bold; font-size: 18px;">
-                ✗ No Face Detected
-            </div>
-            <div style="color: #FF0000; font-size: 14px;">
-                Move closer to camera and ensure good lighting
-            </div>
-        `;
+        statusDiv.className = 'calibration-face-status is-error';
+        statusDiv.innerHTML = '<strong>No Face Detected</strong><span>Move closer to camera and ensure good lighting.</span>';
+        updateCalibrationState('waiting', 'Waiting for face', 'Center your face and keep your eyes open.');
         startBtn.disabled = true;
-        startBtn.style.opacity = '0.5';
-        startBtn.style.cursor = 'not-allowed';
     }
 }
 
 function createFaceStatusDisplay() {
     const statusDiv = document.createElement('div');
     statusDiv.id = 'faceDetectionStatus';
-    statusDiv.style.cssText = `
-        position: absolute;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0, 0, 0, 0.7);
-        padding: 15px 25px;
-        border-radius: 8px;
-        text-align: center;
-        z-index: 10;
-        min-width: 300px;
-    `;
+    statusDiv.className = 'calibration-face-status';
     
     const container = document.querySelector('.calibration-container') || document.body;
     container.appendChild(statusDiv);
@@ -189,8 +154,6 @@ function setupEventListeners() {
     // Initially disable start button (until face is detected)
     if (startBtn) {
         startBtn.disabled = true;
-        startBtn.style.opacity = '0.5';
-        startBtn.style.cursor = 'not-allowed';
     }
 
     const sensitivitySlider = document.getElementById('sensitivitySlider');
@@ -228,13 +191,14 @@ function drawInitialScreen() {
     const statusEl = document.getElementById('calibrationStatus');
     if (statusEl) {
         statusEl.innerHTML = `
-            <div style="text-align: center; padding: 20px;">
-                <h3 style="color: #FFFFFF; margin-bottom: 10px;">Gaze Calibration</h3>
-                <p style="color: #CCCCCC; margin-bottom: 20px;">Position your face in front of camera</p>
-                <p style="color: #00FF00; font-weight: bold;">Camera feed should be visible behind this message</p>
+            <div class="calibration-stage-message">
+                <h3>Gaze Calibration</h3>
+                <p>Position your face in front of camera</p>
+                <p>Camera feed should be visible behind this message</p>
             </div>
         `;
     }
+    updateCalibrationState('waiting', 'Waiting for face', 'Center your face and keep your eyes open.');
 }
 
 async function startCalibration() {
@@ -248,9 +212,11 @@ async function startCalibration() {
         const response = await api.post('/api/calibration/start');
         
         if (response.status === 'success') {
+            calibrationReferenceSize = response.screen || calibrationReferenceSize;
             // Stop face detection check during calibration
             if (faceDetectionCheckInterval) {
                 clearInterval(faceDetectionCheckInterval);
+                faceDetectionCheckInterval = null;
             }
             
             // Hide face detection status and calibration instructions
@@ -263,11 +229,13 @@ async function startCalibration() {
             calibrationPoints = response.points;
             currentPointIndex = 0;
             calibrationActive = true;
+            calibrationPaused = false;
             gazeBuffer = [];
 
-            document.getElementById('startCalibrationBtn').style.display = 'none';
-            document.getElementById('pauseCalibrationBtn').style.display = 'block';
+            document.getElementById('startCalibrationBtn').classList.add('setup-hidden');
+            document.getElementById('pauseCalibrationBtn').classList.remove('setup-hidden');
 
+            updateCalibrationState('running', 'Calibration running', `Point 1 of ${calibrationPoints.length}. Follow each target.`);
             showToast('Calibration started - Follow the points with your eyes', 'success');
             startNextPoint();
         }
@@ -300,12 +268,19 @@ async function startNextPoint() {
     if (statusEl) {
         statusEl.textContent = `Focus on point ${currentPointIndex + 1} of ${calibrationPoints.length}`;
     }
+    updateCalibrationState('running', 'Calibration running', `Focus on point ${currentPointIndex + 1} of ${calibrationPoints.length}.`);
 
     // Start collecting gaze samples
     let elapsedTime = 0;
-    const sampleInterval = setInterval(async () => {
+    clearActiveSampleInterval();
+    activeSampleInterval = setInterval(async () => {
         if (!calibrationActive) {
-            clearInterval(sampleInterval);
+            clearActiveSampleInterval();
+            return;
+        }
+        if (calibrationPaused) {
+            drawCalibrationPoint(point);
+            drawFaceDetectionStatus();
             return;
         }
 
@@ -328,7 +303,7 @@ async function startNextPoint() {
         drawFaceDetectionStatus();
 
         if (elapsedTime >= dwellTime) {
-            clearInterval(sampleInterval);
+            clearActiveSampleInterval();
             
             // Submit calibration point
             await submitCalibrationPoint(point);
@@ -340,10 +315,21 @@ async function startNextPoint() {
 }
 
 function scalePoint(point) {
-    // Calibration points come from server in 1920x1080 space — scale to canvas
-    const scaleX = canvas.width  / 1920;
-    const scaleY = canvas.height / 1080;
-    return [point[0] * scaleX, point[1] * scaleY];
+    if (!canvas || !Array.isArray(point)) return [0, 0];
+
+    const rawX = Number(point[0]);
+    const rawY = Number(point[1]);
+
+    if (rawX >= 0 && rawX <= 1 && rawY >= 0 && rawY <= 1) {
+        return [rawX * canvas.width, rawY * canvas.height];
+    }
+
+    const refWidth = calibrationReferenceSize?.width || canvas.width;
+    const refHeight = calibrationReferenceSize?.height || canvas.height;
+    return [
+        rawX * (canvas.width / refWidth),
+        rawY * (canvas.height / refHeight)
+    ];
 }
 
 function drawCalibrationPoint(point) {
@@ -470,6 +456,7 @@ async function finishCalibration() {
             const toastMsg = isCalibrated ? 'Calibration successful!' : 'Calibration completed (lower accuracy)';
             
             showToast(toastMsg, toastType);
+            updateCalibrationState('complete', 'Calibration complete', isCalibrated ? 'Returning to Dashboard.' : 'Completed with lower accuracy. Returning to Dashboard.');
             
             // Show validation metrics
             if (response.validation) {
@@ -507,29 +494,45 @@ async function finishCalibration() {
             }, 2000);
         } else {
             showToast(`Calibration error: ${response.message || 'Unknown error'}`, 'danger');
+            updateCalibrationState('error', 'Calibration failed', response.message || 'Unknown calibration error.');
             resetCalibration();
         }
     } catch (error) {
         console.error('Calibration calculation error:', error);
         showToast('Error completing calibration: ' + error.message, 'danger');
+        updateCalibrationState('error', 'Calibration failed', error.message);
         resetCalibration();
     }
 }
 
 function pauseCalibration() {
-    calibrationActive = !calibrationActive;
+    if (!calibrationActive) return;
+    calibrationPaused = !calibrationPaused;
     const pauseBtn = document.getElementById('pauseCalibrationBtn');
     if (pauseBtn) {
-        pauseBtn.innerHTML = calibrationActive ? 
-            '<i class="fas fa-pause"></i> Pause' : 
-            '<i class="fas fa-play"></i> Resume';
+        pauseBtn.innerHTML = calibrationPaused ?
+            '<i class="fas fa-play"></i> Resume' :
+            '<i class="fas fa-pause"></i> Pause';
+        pauseBtn.setAttribute('aria-pressed', calibrationPaused ? 'true' : 'false');
     }
+    updateCalibrationState(
+        calibrationPaused ? 'paused' : 'running',
+        calibrationPaused ? 'Calibration paused' : 'Calibration running',
+        calibrationPaused ? 'Resume when you are ready.' : `Focus on point ${currentPointIndex + 1} of ${calibrationPoints.length}.`
+    );
 }
 
-function cancelCalibration() {
+async function cancelCalibration() {
     calibrationActive = false;
+    calibrationPaused = false;
+    clearActiveSampleInterval();
     resetCalibration();
     showToast('Calibration cancelled', 'info');
+    try {
+        await api.post('/api/calibration/cancel');
+    } catch (error) {
+        console.warn('Calibration cancel API unavailable:', error);
+    }
     window.location.href = '/';
 }
 
@@ -537,9 +540,11 @@ function resetCalibration() {
     currentPointIndex = 0;
     gazeBuffer = [];
     calibrationPoints = [];
+    calibrationPaused = false;
+    clearActiveSampleInterval();
 
-    document.getElementById('startCalibrationBtn').style.display = 'block';
-    document.getElementById('pauseCalibrationBtn').style.display = 'none';
+    document.getElementById('startCalibrationBtn')?.classList.remove('setup-hidden');
+    document.getElementById('pauseCalibrationBtn')?.classList.add('setup-hidden');
 
     // Restart face detection check
     if (!faceDetectionCheckInterval) {
@@ -552,6 +557,28 @@ function resetCalibration() {
 
     updateProgress();
     drawInitialScreen();
+}
+function clearActiveSampleInterval() {
+    if (activeSampleInterval) {
+        clearInterval(activeSampleInterval);
+        activeSampleInterval = null;
+    }
+}
+
+function updateCalibrationState(state, label, message) {
+    const stateCard = document.getElementById('calibrationStateCard');
+    const labelEl = document.getElementById('calibrationStateLabel');
+    const messageEl = document.getElementById('calibrationStateMessage');
+
+    if (stateCard) {
+        stateCard.className = `calibration-state-card mb-4 is-${state}`;
+    }
+    if (labelEl) {
+        labelEl.textContent = label;
+    }
+    if (messageEl) {
+        messageEl.textContent = message;
+    }
 }
 
 function updateProgress() {
@@ -575,5 +602,6 @@ function updateSliderDisplay() {
 // Cleanup — do NOT stop camera on unload, it needs to stay alive for gaze tracking
 window.addEventListener('beforeunload', () => {
     calibrationActive = false;
+    clearActiveSampleInterval();
     if (faceDetectionCheckInterval) clearInterval(faceDetectionCheckInterval);
 });

@@ -1,7 +1,7 @@
 /* Setup Wizard JavaScript */
 
 let currentStep = 1;
-const totalSteps = 5;
+const totalSteps = 2;
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Setup wizard loaded');
@@ -135,8 +135,7 @@ async function completeSetup() {
             user_profile: userProfile
         });
 
-        // Start calibration
-        showToast('Setup complete! Starting calibration...', 'success');
+    showToast('Setup complete! Starting calibration...', 'success');
 
         setTimeout(() => {
             window.location.href = '/calibration';
@@ -148,7 +147,4 @@ async function completeSetup() {
     }
 }
 
-// Cleanup
-window.addEventListener('beforeunload', () => {
-    api.post('/api/camera/stop');
-});
+// Keep camera running when navigating between app pages.

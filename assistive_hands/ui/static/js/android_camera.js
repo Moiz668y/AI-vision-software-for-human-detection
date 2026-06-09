@@ -67,8 +67,10 @@ class AndroidCameraManager {
     setupKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
             // Prevent shortcuts if user is typing
-            if (document.activeElement.tagName === 'INPUT' || 
-                document.activeElement.tagName === 'TEXTAREA') {
+            if (document.activeElement.isContentEditable ||
+                document.activeElement.tagName === 'INPUT' ||
+                document.activeElement.tagName === 'TEXTAREA' ||
+                document.activeElement.tagName === 'SELECT') {
                 return;
             }
 
@@ -482,24 +484,11 @@ class AndroidCameraManager {
     }
 
     showNotification(message, type = 'info') {
-        const alertClass = {
-            'success': 'alert-success',
-            'error': 'alert-danger',
-            'warning': 'alert-warning',
-            'danger': 'alert-danger',
-            'info': 'alert-info'
-        }[type] || 'alert-info';
-
-        const alertEl = document.createElement('div');
-        alertEl.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
-        alertEl.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-        alertEl.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-
-        document.body.appendChild(alertEl);
-        setTimeout(() => alertEl.remove(), 5000);
+        if (typeof showToast === 'function') {
+            showToast(message, type === 'error' ? 'danger' : type, 5000);
+            return;
+        }
+        console[type === 'error' ? 'error' : 'log'](message);
     }
 }
 

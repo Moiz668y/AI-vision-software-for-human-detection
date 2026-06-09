@@ -1,4 +1,3 @@
-@"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,133 +8,59 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-hand-holding"></i> AssistiveHands
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/calibration">Calibration</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/communication">Communication</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/settings">Settings</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    {% include '_app_nav.html' %}
 
-    <div class="container-fluid p-4">
-        <!-- Status Bar -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="alert alert-success alert-dismissible fade show" role="alert" id="systemStatus">
-                    <strong>System Active</strong> - All systems operational
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
+    <div class="container-fluid p-4 dashboard-shell">
+        <section class="dashboard-status-strip" id="systemStatus" role="status" aria-live="polite">
+            <div>
+                <strong>System Active</strong>
+                <span>Camera and gaze services are ready.</span>
             </div>
-        </div>
+            <div class="dashboard-status-pills">
+                <span class="status-badge status-connected">Camera Connected</span>
+                <span class="status-badge status-calibrated" id="gazeTrackingStatus">Calibrated</span>
+            </div>
+        </section>
 
-        <!-- Key Metrics -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="card metric-card">
-                    <div class="card-body">
-                        <h6 class="card-title">Gaze Accuracy</h6>
-                        <h2 class="metric-value" id="gazeAccuracy">94.2%</h2>
-                        <small class="text-muted">Detection Quality</small>
+        <div class="row g-4 dashboard-main">
+            <div class="col-xl-8">
+                <section class="card dashboard-camera-card">
+                    <div class="card-header dashboard-card-header">
+                        <div>
+                            <h1 class="dashboard-title">Camera And Gaze</h1>
+                            <p class="dashboard-subtitle">Keep your face centered and use the controls on the right.</p>
+                        </div>
+                        <span class="badge bg-success" id="recordingBadge">
+                            <i class="fas fa-circle"></i> Recording
+                        </span>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card metric-card">
-                    <div class="card-body">
-                        <h6 class="card-title">Session Time</h6>
-                        <h2 class="metric-value" id="sessionTime">0h 0m</h2>
-                        <small class="text-muted">Current Session</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card metric-card">
-                    <div class="card-body">
-                        <h6 class="card-title">Commands</h6>
-                        <h2 class="metric-value" id="commandCount">147</h2>
-                        <small class="text-muted">This Session</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card metric-card">
-                    <div class="card-body">
-                        <h6 class="card-title">Response Time</h6>
-                        <h2 class="metric-value" id="responseTime">0.3s</h2>
-                        <small class="text-muted">Average Latency</small>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Main Content -->
-        <div class="row">
-            <!-- Video Feed -->
-            <div class="col-lg-8">
-                <!-- Tabs for camera selection -->
-                <ul class="nav nav-tabs mb-3" id="cameraTab" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="desktop-camera-tab" data-bs-toggle="tab" data-bs-target="#desktopCamera" type="button">
-                            <i class="fas fa-laptop"></i> Desktop Camera
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="android-camera-tab" data-bs-toggle="tab" data-bs-target="#androidCamera" type="button">
-                            <i class="fas fa-mobile-alt"></i> Android Camera
-                        </button>
-                    </li>
-                </ul>
+                    <div class="card-body p-0">
+                        <ul class="nav nav-pills dashboard-camera-tabs" id="cameraTab" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="desktop-camera-tab" data-bs-toggle="tab" data-bs-target="#desktopCamera" type="button" role="tab" aria-controls="desktopCamera" aria-selected="true">
+                                    <i class="fas fa-laptop"></i> Desktop Camera
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="android-camera-tab" data-bs-toggle="tab" data-bs-target="#androidCamera" type="button" role="tab" aria-controls="androidCamera" aria-selected="false">
+                                    <i class="fas fa-mobile-alt"></i> Android Camera
+                                </button>
+                            </li>
+                        </ul>
 
-                <!-- Tab Content -->
-                <div class="tab-content" id="cameraTabContent">
-                    <!-- Desktop Camera Tab -->
-                    <div class="tab-pane fade show active" id="desktopCamera" role="tabpanel">
-                        <div class="card mb-4">
-                            <div class="card-header bg-dark text-white">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">Desktop Camera Feed</h5>
-                                    <span class="badge bg-success" id="recordingBadge">
-                                        <i class="fas fa-circle"></i> Recording
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="card-body p-0">
-                                <div class="camera-container" style="position:relative; background:#000; min-height:400px; overflow:hidden;">
-                                    <img id="cameraFeed" 
-                                         src="/camera_feed" 
-                                         alt="IP Webcam Feed" 
-                                         style="width:100%; height:100%; object-fit:cover; display:block;"
+                        <div class="tab-content" id="cameraTabContent">
+                            <div class="tab-pane fade show active" id="desktopCamera" role="tabpanel" aria-labelledby="desktop-camera-tab">
+                                <div class="camera-container dashboard-camera-frame">
+                                    <img id="cameraFeed"
+                                         src="/camera_feed"
+                                         alt="Desktop camera feed"
                                          onerror="this.style.display='none'; document.getElementById('cameraError').style.display='flex';">
-                                    <div id="cameraError" style="display:none; position:absolute; top:0; left:0; 
-                                         width:100%; height:100%; align-items:center; justify-content:center;
-                                         flex-direction:column; color:white; background:#1a1a1a; z-index:10;">
-                                        <i class="fas fa-exclamation-triangle fa-3x mb-3" style="color:#ff4444;"></i>
-                                        <h6 style="margin:10px 0;">Camera feed unavailable</h6>
-                                        <small style="text-align:center; margin-bottom:15px;">
-                                            Open IP Webcam app → tap Start Server<br>
-                                            Make sure phone &amp; PC are on same WiFi
-                                        </small>
-                                        <button class="btn btn-sm btn-outline-light" 
+                                    <div id="cameraError" class="dashboard-camera-error">
+                                        <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                                        <h2>Camera feed unavailable</h2>
+                                        <p>Check that the camera is connected, then retry the stream.</p>
+                                        <button class="btn btn-sm btn-outline-light"
                                                 onclick="document.getElementById('cameraFeed').style.display='block'; document.getElementById('cameraFeed').src='/camera_feed?t='+Date.now(); document.getElementById('cameraError').style.display='none'; return false;">
                                             <i class="fas fa-redo"></i> Retry
                                         </button>
@@ -145,206 +70,159 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    <!-- Android Camera Tab -->
-                    <div class="tab-pane fade" id="androidCamera" role="tabpanel">
-                        <div class="card mb-4">
-                            <div class="card-header bg-dark text-white">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">Android Camera Feed</h5>
-                                    <div>
-                                        <button class="btn btn-sm btn-success me-2" id="androidConnectBtn">
-                                            <i class="fas fa-plug"></i> Connect Device
-                                        </button>
-                                        <button class="btn btn-sm btn-info" id="refreshDevicesBtn">
-                                            <i class="fas fa-sync-alt"></i> Refresh
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-body p-0">
-                                <div class="camera-container" id="androidCameraContainer" style="min-height: 400px; display: flex; align-items: center; justify-content: center; background: #1a1a1a;">
-                                    <div class="text-center text-muted">
+                            <div class="tab-pane fade" id="androidCamera" role="tabpanel" aria-labelledby="android-camera-tab">
+                                <div class="camera-container dashboard-camera-frame android-empty-state" id="androidCameraContainer">
+                                    <div class="text-center">
                                         <i class="fas fa-mobile-alt fa-3x mb-3"></i>
                                         <p>No Android device connected</p>
-                                        <small>Click "Connect Device" to add an Android camera</small>
+                                        <small>Connect or refresh devices from the controls below.</small>
                                     </div>
+                                </div>
+                                <div class="dashboard-device-actions">
+                                    <button class="btn btn-success" id="androidConnectBtn">
+                                        <i class="fas fa-plug"></i> Connect Device
+                                    </button>
+                                    <button class="btn btn-outline-primary" id="refreshDevicesBtn">
+                                        <i class="fas fa-sync-alt"></i> Refresh Devices
+                                    </button>
+                                </div>
+                                <div class="dashboard-device-list" id="androidDevicesList">
+                                    <span>No devices connected</span>
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Connected Devices List -->
-                        <div class="card">
-                            <div class="card-header bg-secondary text-white">
-                                <h6 class="mb-0">Connected Devices</h6>
-                            </div>
-                            <div class="card-body" id="androidDevicesList">
-                                <div class="text-muted text-center">No devices connected</div>
-                            </div>
-                        </div>
                     </div>
-                </div>
 
-                <!-- Alignment Checklist -->
-                <div class="card">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">Alignment Checklist</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-check mb-2">
+                    <div class="dashboard-checklist" aria-label="Alignment checklist">
+                        <label class="dashboard-check">
                             <input class="form-check-input" type="checkbox" id="faceVisible" checked disabled>
-                            <label class="form-check-label" for="faceVisible">
-                                Face is clearly visible
-                            </label>
-                        </div>
-                        <div class="form-check mb-2">
+                            <span>Face visible</span>
+                        </label>
+                        <label class="dashboard-check">
                             <input class="form-check-input" type="checkbox" id="properLighting" checked disabled>
-                            <label class="form-check-label" for="properLighting">
-                                Proper lighting on face
-                            </label>
-                        </div>
-                        <div class="form-check mb-2">
+                            <span>Lighting good</span>
+                        </label>
+                        <label class="dashboard-check">
                             <input class="form-check-input" type="checkbox" id="cameraArcLevel" checked disabled>
-                            <label class="form-check-label" for="cameraArcLevel">
-                                Camera at eye level
-                            </label>
-                        </div>
-                        <div class="form-check mb-2">
+                            <span>Camera level</span>
+                        </label>
+                        <label class="dashboard-check">
                             <input class="form-check-input" type="checkbox" id="gazeLocked" checked disabled>
-                            <label class="form-check-label" for="gazeLocked">
-                                Gaze tracking enabled
-                            </label>
-                        </div>
-                        <div class="form-check">
+                            <span>Gaze enabled</span>
+                        </label>
+                        <label class="dashboard-check">
                             <input class="form-check-input" type="checkbox" id="backgroundClean" checked disabled>
-                            <label class="form-check-label" for="backgroundClean">
-                                Background clear
-                            </label>
-                        </div>
+                            <span>Background clear</span>
+                        </label>
                     </div>
-                </div>
+                </section>
             </div>
 
-            <!-- Right Sidebar -->
-            <div class="col-lg-4">
-                <!-- Quick Actions -->
-                <div class="card mb-4">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">Quick Actions</h5>
-                    </div>
-                    <div class="card-body">
-                        <button class="btn btn-primary btn-lg w-100 mb-2" id="recalibrateBtn">
-                            <i class="fas fa-crosshairs"></i> Recalibrate Gaze
-                        </button>
-                        <button class="btn btn-success btn-lg w-100 mb-2" id="textEntryBtn">
-                            <i class="fas fa-keyboard"></i> Open Text Entry
-                        </button>
-                        <button class="btn btn-info btn-lg w-100 mb-2" id="voiceBtn">
-                            <i class="fas fa-microphone"></i> Voice Commands
-                        </button>
-                        <button class="btn btn-warning btn-lg w-100" id="pauseBtn">
-                            <i class="fas fa-pause"></i> Pause System
-                        </button>
-                    </div>
-                </div>
+            <div class="col-xl-4">
+                <aside class="dashboard-control-stack">
+                    <section class="card dashboard-panel">
+                        <div class="card-header dashboard-card-header compact">
+                            <h2>Primary Actions</h2>
+                        </div>
+                        <div class="card-body dashboard-action-grid">
+                            <button class="btn btn-primary btn-lg w-100 gaze-target" id="recalibrateBtn">
+                                <i class="fas fa-crosshairs"></i> Recalibrate
+                            </button>
+                            <button class="btn btn-success btn-lg w-100 gaze-target" id="textEntryBtn">
+                                <i class="fas fa-keyboard"></i> Text Entry
+                            </button>
+                            <button class="btn btn-outline-secondary btn-lg w-100 gaze-target" id="voiceBtn" disabled aria-disabled="true">
+                                <i class="fas fa-microphone"></i> Voice Soon
+                            </button>
+                            <button class="btn btn-warning btn-lg w-100 gaze-target" id="pauseBtn">
+                                <i class="fas fa-pause"></i> Pause System
+                            </button>
+                        </div>
+                    </section>
 
-                <!-- Gaze Control Status & Help -->
-                <div class="card mb-4">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">🎮 Gaze Control</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="alert alert-info mb-3">
-                            <strong id="gazeControlStatus">✓ ENABLED</strong>
-                            <br/>
-                            <small>Your eyes control the cursor</small>
+                    <section class="card dashboard-panel">
+                        <div class="card-header dashboard-card-header compact">
+                            <h2>Gaze Control</h2>
                         </div>
-                        <div class="btn-group w-100 mb-3" role="group">
-                            <button type="button" class="btn btn-sm btn-success" onclick="toggleGazeControl(true)">
-                                <i class="fas fa-eye"></i> Enable
-                            </button>
-                            <button type="button" class="btn btn-sm btn-danger" onclick="toggleGazeControl(false)">
-                                <i class="fas fa-eye-slash"></i> Disable
-                            </button>
+                        <div class="card-body">
+                            <div class="dashboard-gaze-state" id="dashboardGazeState" role="status" aria-live="polite">
+                                <strong id="gazeControlStatus">ENABLED</strong>
+                                <span>Your eyes control the cursor</span>
+                            </div>
+                            <div class="btn-group w-100 dashboard-control-toggle" role="group" aria-label="Gaze cursor control">
+                                <button type="button" class="btn btn-success gaze-target-dense" id="enableGazeBtn" onclick="toggleGazeControl(true)">
+                                    <i class="fas fa-eye"></i> Enable
+                                </button>
+                                <button type="button" class="btn btn-danger gaze-target-dense" id="disableGazeBtn" onclick="toggleGazeControl(false)">
+                                    <i class="fas fa-eye-slash"></i> Disable
+                                </button>
+                            </div>
                         </div>
-                        <div class="bg-dark p-3" style="border-radius: 5px; font-size: 12px;">
-                            <strong>Keyboard Shortcuts:</strong>
-                            <ul class="mb-0 mt-2">
-                                <li><kbd>SPACE</kbd> - Toggle gaze on/off</li>
-                                <li><kbd>ESC</kbd> - Emergency stop</li>
-                                <li><kbd>M</kbd> - Use mouse instead</li>
-                                <li><kbd>A</kbd> - Switch to Android camera</li>
-                                <li><kbd>D</kbd> - Switch to Desktop camera</li>
-                                <li><kbd>R</kbd> - Refresh device list</li>
-                                <li><kbd>C</kbd> - Connect new device</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
+                    </section>
 
-                <!-- Facial Gesture Controls -->
-                <div class="card mb-4">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">Facial Gesture Controls</h5>
-                    </div>
-                    <div class="card-body gesture-controls">
-                        <div class="gesture-group">
-                            <button class="gesture-btn" id="blinkBtn" title="Blink to select">
-                                <i class="fas fa-eye-slash"></i>
-                                <span>Blink</span>
-                                <small>Select</small>
-                            </button>
+                    <section class="card dashboard-panel">
+                        <div class="card-header dashboard-card-header compact">
+                            <h2>System Status</h2>
                         </div>
-                        <div class="gesture-group">
-                            <button class="gesture-btn" id="smileBtn" title="Smile to confirm">
-                                <i class="fas fa-smile"></i>
-                                <span>Smile</span>
-                                <small>Confirm</small>
-                            </button>
+                        <div class="card-body system-status">
+                            <div class="status-item">
+                                <span class="status-label">Camera Connection</span>
+                                <span class="status-badge status-connected">Connected</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Face Detection</span>
+                                <span class="status-badge status-active" id="faceDetectionStatus">Active</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Voice Commands</span>
+                                <span class="status-badge status-standby">Standby</span>
+                            </div>
                         </div>
-                        <div class="gesture-group mt-3">
-                            <button class="gesture-btn" id="headLeftBtn" title="Turn head left">
-                                <i class="fas fa-arrow-left"></i>
-                                <span>Head Left</span>
-                                <small>Navigate</small>
-                            </button>
-                            <button class="gesture-btn" id="headRightBtn" title="Turn head right">
-                                <i class="fas fa-arrow-right"></i>
-                                <span>Head Right</span>
-                                <small>Navigate</small>
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                    </section>
 
-                <!-- System Status -->
-                <div class="card">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">System Status</h5>
-                    </div>
-                    <div class="card-body system-status">
-                        <div class="status-item">
-                            <span class="status-label">Camera Connection</span>
-                            <span class="status-badge status-connected">Connected</span>
+                    <section class="card dashboard-panel">
+                        <div class="card-header dashboard-card-header compact">
+                            <h2>Shortcuts</h2>
                         </div>
-                        <div class="status-item">
-                            <span class="status-label">Face Detection</span>
-                            <span class="status-badge status-active" id="faceDetectionStatus">Active</span>
+                        <div class="card-body">
+                            <div class="shortcut-grid" aria-label="Keyboard shortcuts">
+                                <kbd>Space</kbd><span>Toggle gaze on/off</span>
+                                <kbd>Esc</kbd><span>Emergency disable</span>
+                                <kbd>M</kbd><span>Use mouse instead</span>
+                                <kbd>A</kbd><span>Switch to Android camera</span>
+                                <kbd>D</kbd><span>Switch to desktop camera</span>
+                                <kbd>R</kbd><span>Refresh device list</span>
+                                <kbd>C</kbd><span>Connect new device</span>
+                            </div>
                         </div>
-                        <div class="status-item">
-                            <span class="status-label">Gaze Tracking</span>
-                            <span class="status-badge status-calibrated" id="gazeTrackingStatus">Calibrated</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-label">Voice Commands</span>
-                            <span class="status-badge status-standby">Standby</span>
-                        </div>
-                    </div>
-                </div>
+                    </section>
+                </aside>
             </div>
         </div>
+
+        <section class="dashboard-telemetry" aria-label="Session telemetry">
+            <div class="telemetry-tile">
+                <span class="telemetry-label">Gaze Accuracy</span>
+                <strong class="telemetry-value" id="gazeAccuracy">94.2%</strong>
+                <span class="telemetry-note">Detection quality</span>
+            </div>
+            <div class="telemetry-tile">
+                <span class="telemetry-label">Session Time</span>
+                <strong class="telemetry-value" id="sessionTime">00:00:00</strong>
+                <span class="telemetry-note">Current session</span>
+            </div>
+            <div class="telemetry-tile">
+                <span class="telemetry-label">Commands</span>
+                <strong class="telemetry-value" id="commandCount">0</strong>
+                <span class="telemetry-note">This session</span>
+            </div>
+            <div class="telemetry-tile">
+                <span class="telemetry-label">Response Time</span>
+                <strong class="telemetry-value" id="responseTime">0.02s</strong>
+                <span class="telemetry-note">Average latency</span>
+            </div>
+        </section>
     </div>
 
     <!-- Scripts -->
@@ -355,6 +233,15 @@
     <script src="{{ url_for('static', filename='js/android_camera.js') }}"></script>
     <script>
     document.addEventListener('keydown', function(e) {
+        const target = e.target;
+        const editable = target && (
+            target.isContentEditable ||
+            target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT'
+        );
+        if (editable) return;
+
         if (e.key === 'x' || e.key === 'X') {
             fetch('/api/mouse/click', {method: 'POST'})
                 .then(res => res.json())
@@ -372,4 +259,3 @@
     </script>
 </body>
 </html>
-"@ | Out-File -FilePath "D:\New folder (2)\assistive_hands\ui\templates\dashboard.html" -Encoding utf8

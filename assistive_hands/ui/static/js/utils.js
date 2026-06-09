@@ -341,16 +341,31 @@ const tts = new TextToSpeech();
 
 // Utility Functions
 function showToast(message, type = 'info', duration = 3000) {
+    const normalizedType = type === 'error' ? 'danger' : type;
+    let stack = document.getElementById('appToastStack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'appToastStack';
+        stack.className = 'app-toast-stack';
+        stack.setAttribute('aria-live', 'polite');
+        stack.setAttribute('aria-label', 'Notifications');
+        document.body.appendChild(stack);
+    }
+
     const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.className = `alert alert-${normalizedType} alert-dismissible fade show app-toast`;
     alertDiv.setAttribute('role', 'alert');
     alertDiv.innerHTML = `
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
 
-    const container = document.querySelector('.container-fluid') || document.body;
-    container.insertBefore(alertDiv, container.firstChild);
+    stack.appendChild(alertDiv);
+
+    const maxToasts = 4;
+    while (stack.children.length > maxToasts) {
+        stack.firstElementChild.remove();
+    }
 
     setTimeout(() => {
         alertDiv.remove();

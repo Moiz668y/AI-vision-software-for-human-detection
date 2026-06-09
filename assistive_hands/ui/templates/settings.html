@@ -8,37 +8,45 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-cog"></i> AssistiveHands Settings
-            </a>
-        </div>
-    </nav>
+    {% include '_app_nav.html' %}
 
     <div class="container-fluid p-4">
-        <div class="row">
+        <div class="page-toolbar">
+            <div>
+                <h1 class="page-title">Settings</h1>
+                <p class="page-subtitle">Configure camera, gaze, dwell, system, and audio preferences.</p>
+            </div>
+            <a class="btn btn-outline-primary app-page-home" href="/">
+                <i class="fas fa-house"></i> Back to Dashboard
+            </a>
+        </div>
+        <div class="row settings-layout">
             <!-- Settings Menu -->
             <div class="col-md-3">
-                <div class="list-group">
+                <div class="list-group settings-nav" aria-label="Settings sections">
                     <a href="#cameraSection" class="list-group-item list-group-item-action active" data-bs-toggle="list">
                         <i class="fas fa-camera"></i> Camera Configuration
+                        <span class="settings-state-badge is-preview">Preview</span>
                     </a>
                     <a href="#gazeSection" class="list-group-item list-group-item-action" data-bs-toggle="list">
                         <i class="fas fa-eye"></i> Gaze Tracking
+                        <span class="settings-state-badge is-live">Live</span>
                     </a>
                     <a href="#dwellSection" class="list-group-item list-group-item-action" data-bs-toggle="list">
                         <i class="fas fa-hourglass"></i> Dwell Settings
+                        <span class="settings-state-badge is-live">Live</span>
                     </a>
                     <a href="#calibrationSection" class="list-group-item list-group-item-action" data-bs-toggle="list">
                         <i class="fas fa-crosshairs"></i> Calibration
+                        <span class="settings-state-badge is-live">Live</span>
                     </a>
                     <a href="#systemSection" class="list-group-item list-group-item-action" data-bs-toggle="list">
                         <i class="fas fa-cogs"></i> System Settings
+                        <span class="settings-state-badge is-preview">Preview</span>
                     </a>
                     <a href="#audioSection" class="list-group-item list-group-item-action" data-bs-toggle="list">
                         <i class="fas fa-volume-up"></i> Audio & Voice
+                        <span class="settings-state-badge is-preview">Preview</span>
                     </a>
                 </div>
             </div>
@@ -47,7 +55,7 @@
             <div class="col-md-9">
                 <!-- Camera Configuration -->
                 <div class="settings-section" id="cameraSection">
-                    <h3>Camera Configuration</h3>
+                    <h3>Camera Configuration <span class="settings-section-badge">Preview controls</span></h3>
                     <div class="card">
                         <div class="card-body">
                             <div class="mb-3">
@@ -76,7 +84,7 @@
 
                 <!-- Gaze Tracking -->
                 <div class="settings-section" id="gazeSection">
-                    <h3>Gaze Tracking Settings</h3>
+                    <h3>Gaze Tracking Settings <span class="settings-section-badge is-live">Saved settings</span></h3>
                     <div class="card">
                         <div class="card-body">
                             <div class="mb-3">
@@ -101,7 +109,7 @@
 
                 <!-- Dwell Settings -->
                 <div class="settings-section" id="dwellSection">
-                    <h3>Dwell Time Settings</h3>
+                    <h3>Dwell Time Settings <span class="settings-section-badge is-live">Saved settings</span></h3>
                     <div class="card">
                         <div class="card-body">
                             <div class="mb-3">
@@ -129,7 +137,7 @@
 
                 <!-- Calibration -->
                 <div class="settings-section" id="calibrationSection">
-                    <h3>Calibration Settings</h3>
+                    <h3>Calibration Settings <span class="settings-section-badge is-live">Live route</span></h3>
                     <div class="card">
                         <div class="card-body">
                             <div class="mb-3">
@@ -155,7 +163,7 @@
 
                 <!-- System Settings -->
                 <div class="settings-section" id="systemSection">
-                    <h3>System Settings</h3>
+                    <h3>System Settings <span class="settings-section-badge">Local preview</span></h3>
                     <div class="card">
                         <div class="card-body">
                             <div class="mb-3">
@@ -191,7 +199,7 @@
 
                 <!-- Audio & Voice -->
                 <div class="settings-section" id="audioSection">
-                    <h3>Audio & Voice Settings</h3>
+                    <h3>Audio & Voice Settings <span class="settings-section-badge">Not connected yet</span></h3>
                     <div class="card">
                         <div class="card-body">
                             <div class="form-check form-switch mb-3">
@@ -219,7 +227,7 @@
                 </div>
 
                 <!-- Save Button -->
-                <div class="mt-4">
+                <div class="settings-actions mt-4">
                     <button class="btn btn-success btn-lg" id="saveSettingsBtn">
                         <i class="fas fa-save"></i> Save Settings
                     </button>

@@ -1,0 +1,55 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary app-navbar">
+    <div class="container-fluid">
+        <a class="navbar-brand app-brand" href="/">
+            <i class="fas fa-hand-holding"></i> AssistiveHands
+        </a>
+
+        <div class="d-flex align-items-center gap-2 order-lg-3">
+            {% if request.endpoint not in ['dashboard', 'dashboard_page'] %}
+            <button type="button" class="btn btn-outline-light app-back-btn" onclick="history.length > 1 ? history.back() : window.location.href='/'">
+                <i class="fas fa-arrow-left"></i> Back
+            </button>
+            <a class="btn btn-light app-home-btn" href="/">
+                <i class="fas fa-house"></i> Dashboard
+            </a>
+            {% endif %}
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNavbarNav" aria-controls="appNavbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+        </div>
+
+        <div class="collapse navbar-collapse order-lg-2" id="appNavbarNav">
+            <ul class="navbar-nav ms-lg-auto app-nav-links">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint in ['dashboard', 'dashboard_page'] %}active{% endif %}" href="/" {% if request.endpoint in ['dashboard', 'dashboard_page'] %}aria-current="page"{% endif %}>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'calibration' %}active{% endif %}" href="/calibration" {% if request.endpoint == 'calibration' %}aria-current="page"{% endif %}>
+                        Calibration
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'communication' %}active{% endif %}" href="/communication" {% if request.endpoint == 'communication' %}aria-current="page"{% endif %}>
+                        Communication
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="/settings" {% if request.endpoint == 'settings' %}aria-current="page"{% endif %}>
+                        Settings
+                    </a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if request.endpoint in ['setup', 'debug'] %}active{% endif %}" href="#" id="utilityMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        More
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="utilityMenu">
+                        <li><a class="dropdown-item {% if request.endpoint == 'setup' %}active{% endif %}" href="/setup">Setup</a></li>
+                        <li><a class="dropdown-item {% if request.endpoint == 'debug' %}active{% endif %}" href="/debug">Debug</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>

@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     loadSettings();
     setupEventListeners();
+    showSettingsSection('#cameraSection', document.querySelector('.settings-nav .list-group-item'));
 });
 
 function loadSettings() {
@@ -50,11 +51,11 @@ function setupEventListeners() {
     const resetBtn = document.getElementById('resetSettingsBtn');
 
     // Tab navigation
-    document.querySelectorAll('.list-group-item').forEach(item => {
+    document.querySelectorAll('.settings-nav .list-group-item').forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
-            const target = e.target.getAttribute('href');
-            showSettingsSection(target);
+            const link = e.currentTarget;
+            showSettingsSection(link.getAttribute('href'), link);
         });
     });
 
@@ -88,7 +89,7 @@ function setupEventListeners() {
     });
 }
 
-function showSettingsSection(sectionId) {
+function showSettingsSection(sectionId, activeItem = null) {
     // Hide all sections
     document.querySelectorAll('.settings-section').forEach(section => {
         section.style.display = 'none';
@@ -101,10 +102,10 @@ function showSettingsSection(sectionId) {
     }
 
     // Update active state
-    document.querySelectorAll('.list-group-item').forEach(item => {
+    document.querySelectorAll('.settings-nav .list-group-item').forEach(item => {
         item.classList.remove('active');
     });
-    event.target.classList.add('active');
+    activeItem?.classList.add('active');
 }
 
 async function saveSettings() {
@@ -137,24 +138,17 @@ async function saveSettings() {
 }
 
 function resetSettings() {
-    if (confirm('Are you sure you want to reset all settings to default?')) {
-        // Reset UI elements to defaults
-        document.getElementById('dwellTime').value = '1.0';
-        document.getElementById('brightness').value = '0';
-        document.getElementById('contrast').value = '0';
-        document.getElementById('smoothing').value = '50';
-        document.getElementById('sensitivity').value = '1';
-        document.getElementById('volume').value = '70';
-        document.getElementById('darkMode').checked = false;
-        document.getElementById('highContrast').checked = false;
-        document.getElementById('performanceMode').checked = false;
+    document.getElementById('dwellTime').value = '1.0';
+    document.getElementById('brightness').value = '0';
+    document.getElementById('contrast').value = '0';
+    document.getElementById('smoothing').value = '50';
+    document.getElementById('sensitivity').value = '1';
+    document.getElementById('volume').value = '70';
+    document.getElementById('darkMode').checked = false;
+    document.getElementById('highContrast').checked = false;
+    document.getElementById('performanceMode').checked = false;
 
-        // Apply to DOM
-        document.body.classList.remove('dark-mode', 'high-contrast');
-
-        showToast('Settings reset to defaults', 'info');
-
-        // Save defaults
-        saveSettings();
-    }
+    document.body.classList.remove('dark-mode', 'high-contrast');
+    showToast('Settings reset to defaults', 'info');
+    saveSettings();
 }

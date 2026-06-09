@@ -5,6 +5,10 @@
 let displayText = '';
 let dwellTime = 1.0;
 let gazeUpdateInterval;
+let dwellEnabled = true;
+let gazeInputPaused = false;
+let activeDwellId = null;
+let completedDwellId = null;
 const mapper = new GazeElementMapper();
 const dwellTimers = new Map();
 
@@ -25,6 +29,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Setup controls
         setupControls();
 
+        // Register gaze targets after controls exist
+        requestAnimationFrame(refreshGazeTargets);
+        window.addEventListener('resize', debounce(refreshGazeTargets, 150));
+        window.addEventListener('scroll', debounce(refreshGazeTargets, 150), true);
+
         // Start gaze tracking
         startGazeTracking();
 
@@ -42,24 +51,6 @@ function initializeKeyboard() {
             handleKeyPress(btn.dataset.key, btn);
         });
     });
-
-    // Register after layout so getBoundingClientRect is accurate
-    requestAnimationFrame(() => {
-        keyboardBtns.forEach(btn => {
-            const key = btn.dataset.key;
-            const rect = btn.getBoundingClientRect();
-            mapper.registerElement(
-                `key-${key}`,
-                rect.left + window.scrollX,
-                rect.top  + window.scrollY,
-                rect.width,
-                rect.height,
-                () => btn.classList.add('hovered'),
-                () => btn.classList.remove('hovered')
-            );
-        });
-        console.log(`Registered ${keyboardBtns.length} keyboard buttons for gaze mapping`);
-    });
 }
 
 function initializeQuickPhrases() {
@@ -67,9 +58,7 @@ function initializeQuickPhrases() {
 
     phraseBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            const phrase = btn.dataset.phrase;
-            addText(phrase);
-            tts.speak(phrase);
+            handlePhrasePress(btn);
         });
     });
 }
@@ -80,6 +69,9 @@ function setupControls() {
     const speakBtn = document.getElementById('speakBtn');
     const clearBtn = document.getElementById('clearBtn');
     const dwellTimeInput = document.getElementById('dwellTimeInput');
+    const dwellEnabledToggle = document.getElementById('dwellEnabledToggle');
+    const pauseGazeInputBtn = document.getElementById('pauseGazeInputBtn');
+    const communicationBackBtn = document.getElementById('communicationBackBtn');
 
     console.log('Speak Button found:', !!speakBtn);
     console.log('Clear Button found:', !!clearBtn);
@@ -95,7 +87,7 @@ function setupControls() {
             console.log('Display text length:', displayText.length);
             
             if (!displayText || displayText.trim().length === 0) {
-                alert('No text to speak!');
+                showToast('No text to speak', 'warning');
                 return;
             }
             
@@ -110,7 +102,7 @@ function setupControls() {
                 
                 utterance.onstart = function() {
                     console.log('Speech started');
-                    alert('Speaking: ' + text.substring(0, 50));
+                    showToast('Speaking text', 'info');
                 };
                 
                 utterance.onend = function() {
@@ -119,7 +111,7 @@ function setupControls() {
                 
                 utterance.onerror = function(e) {
                     console.error('Speech error:', e);
-                    alert('Speech error: ' + e.error);
+                    showToast('Speech error: ' + e.error, 'danger');
                 };
                 
                 window.speechSynthesis.cancel();
@@ -128,7 +120,7 @@ function setupControls() {
                 
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error: ' + error.message);
+                showToast('Error: ' + error.message, 'danger');
             }
             
             return false;
@@ -150,8 +142,68 @@ function setupControls() {
             dwellTime = parseFloat(e.target.value) || 1.0;
         });
     }
+
+    if (dwellEnabledToggle) {
+        dwellEnabled = dwellEnabledToggle.checked;
+        dwellEnabledToggle.addEventListener('change', (e) => {
+            dwellEnabled = e.target.checked;
+            cancelAllDwell();
+            updateGazeInputState();
+        });
+    }
+
+    pauseGazeInputBtn?.addEventListener('click', () => {
+        setGazeInputPaused(!gazeInputPaused);
+    });
+
+    communicationBackBtn?.addEventListener('click', () => {
+        if (window.history.length > 1) {
+            window.history.back();
+        } else {
+            window.location.href = '/';
+        }
+    });
+
+    updateGazeInputState();
     
     console.log('Controls setup complete');
+}
+
+function refreshGazeTargets() {
+    cancelAllDwell();
+    if (mapper.currentElement?.onLeave) {
+        mapper.currentElement.onLeave();
+    }
+    mapper.elements = [];
+    mapper.currentElement = null;
+
+    const targets = [
+        ...document.querySelectorAll('.keyboard-btn'),
+        ...document.querySelectorAll('.phrase-btn'),
+        ...document.querySelectorAll('#speakBtn, #clearBtn, #pauseGazeInputBtn, #communicationBackBtn, .communication-toolbar a')
+    ];
+
+    targets.forEach((target, index) => {
+        const targetId = target.dataset.gazeId || target.id || `gaze-target-${index}`;
+        target.dataset.gazeId = targetId;
+        const rect = target.getBoundingClientRect();
+
+        mapper.registerElement(
+            targetId,
+            rect.left,
+            rect.top,
+            rect.width,
+            rect.height,
+            () => target.classList.add('hovered'),
+            () => {
+                target.classList.remove('hovered');
+                target.classList.remove('dwell-active');
+                target.style.removeProperty('--dwell-progress');
+            }
+        );
+    });
+
+    console.log(`Registered ${targets.length} gaze targets for dwell mapping`);
 }
 
 function startGazeTracking() {
@@ -160,7 +212,7 @@ function startGazeTracking() {
             const response = await api.get('/api/gaze/current');
 
             if (response.status === 'success') {
-                const { gaze_normalized, gaze_screen, face_detected } = response;
+                const { gaze_normalized } = response;
 
                 // Convert normalized gaze (0-1) to VIEWPORT pixels for element hit-testing
                 // getBoundingClientRect() returns viewport coords, so we must match that
@@ -176,10 +228,7 @@ function startGazeTracking() {
                 // Trigger dwell timer for hovered key
                 updateDwellTimers();
 
-                // Move actual system cursor (screen pixels)
-                if (face_detected) {
-                    moveSystemCursor(gaze_screen.x, gaze_screen.y);
-                }
+                // Backend owns physical cursor movement; this page only uses gaze for UI hit-testing.
             }
         } catch (error) {
             console.error('Gaze tracking error:', error);
@@ -210,11 +259,6 @@ function updateGazeCursor(viewX, viewY) {
     cursor.style.top  = viewY + 'px';
 }
 
-function moveSystemCursor(screenX, screenY) {
-    api.post('/api/cursor/move', { x: Math.round(screenX), y: Math.round(screenY) })
-       .catch(() => {});
-}
-
 function handleKeyPress(key, btn) {
     console.log(`Key pressed: ${key}`);
     
@@ -242,6 +286,16 @@ function handleKeyPress(key, btn) {
     // Visual feedback
     btn.classList.add('active');
     setTimeout(() => btn.classList.remove('active'), 100);
+}
+
+function handlePhrasePress(btn) {
+    const phrase = btn.dataset.phrase;
+    if (!phrase) return;
+
+    addText(phrase);
+    tts.speak(phrase);
+    btn.classList.add('active');
+    setTimeout(() => btn.classList.remove('active'), 150);
 }
 
 async function sendKeyToSystem(key) {
@@ -294,62 +348,150 @@ function updateTextDisplay() {
 }
 
 function updateDwellTimers() {
+    if (!dwellEnabled || gazeInputPaused) {
+        cancelAllDwell();
+        return;
+    }
+
     const currentElement = mapper.currentElement;
 
     if (!currentElement) {
-        // Gaze left all buttons – cancel all timers
-        dwellTimers.forEach(timer => timer.stop());
-        dwellTimers.clear();
-        // Remove any progress rings
-        document.querySelectorAll('.keyboard-btn').forEach(b => b.classList.remove('dwell-active'));
+        cancelAllDwell();
+        completedDwellId = null;
         return;
     }
 
     const elementId = currentElement.id;
 
-    // OPTION B: IGNORE keyboard buttons - no auto click
-    if (elementId && elementId.startsWith('key-')) {
-        // Do nothing for keyboard buttons
+    if (activeDwellId && activeDwellId !== elementId) {
+        cancelAllDwell();
+    }
+
+    if (completedDwellId && completedDwellId !== elementId) {
+        completedDwellId = null;
+    }
+
+    if (elementId === completedDwellId || dwellTimers.has(elementId)) {
         return;
     }
 
-    // Already tracking this element
-    if (dwellTimers.has(elementId)) return;
+    const target = document.querySelector(`[data-gaze-id="${elementId}"]`);
+    if (!target) return;
 
-    // Cancel timers for other elements
-    dwellTimers.forEach((timer, id) => {
-        if (id !== elementId) {
-            timer.stop();
-            dwellTimers.delete(id);
-        }
-    });
+    activeDwellId = elementId;
+    target.classList.add('dwell-active');
+    target.style.setProperty('--dwell-progress', '0%');
 
-    // Find the actual button for this element
-    const keyName = elementId.replace('key-', '');
-    const keyBtn = document.querySelector(`[data-key="${keyName}"]`);
-    if (!keyBtn) return;
-
-    keyBtn.classList.add('dwell-active');
+    const dwellTimer = document.getElementById('dwellTimer');
+    const duration = dwellTime * 1000;
+    const startedAt = performance.now();
 
     const timerObj = {
         _timeout: null,
+        _animation: null,
         stop() {
             clearTimeout(this._timeout);
-            keyBtn.classList.remove('dwell-active');
+            if (this._animation) {
+                cancelAnimationFrame(this._animation);
+            }
+            target.classList.remove('dwell-active');
+            target.style.removeProperty('--dwell-progress');
+            if (dwellTimer) {
+                dwellTimer.style.width = '0%';
+            }
         }
     };
 
+    const animate = (now) => {
+        const progress = Math.min(100, ((now - startedAt) / duration) * 100);
+        target.style.setProperty('--dwell-progress', `${progress}%`);
+        if (dwellTimer) {
+            dwellTimer.style.width = `${progress}%`;
+        }
+        if (progress < 100 && dwellTimers.has(elementId)) {
+            timerObj._animation = requestAnimationFrame(animate);
+        }
+    };
+
+    timerObj._animation = requestAnimationFrame(animate);
     timerObj._timeout = setTimeout(() => {
-        keyBtn.classList.remove('dwell-active');
+        target.classList.remove('dwell-active');
+        target.style.removeProperty('--dwell-progress');
+        if (dwellTimer) {
+            dwellTimer.style.width = '0%';
+        }
         dwellTimers.delete(elementId);
-        handleKeyPress(keyName, keyBtn);
-    }, dwellTime * 1000);
+        activeDwellId = null;
+        completedDwellId = elementId;
+        activateDwellTarget(target);
+    }, duration);
 
     dwellTimers.set(elementId, timerObj);
+}
+
+function activateDwellTarget(target) {
+    if (target.classList.contains('keyboard-btn')) {
+        handleKeyPress(target.dataset.key, target);
+        return;
+    }
+
+    if (target.classList.contains('phrase-btn')) {
+        handlePhrasePress(target);
+        return;
+    }
+
+    target.click();
+}
+
+function cancelAllDwell() {
+    dwellTimers.forEach(timer => timer.stop());
+    dwellTimers.clear();
+    activeDwellId = null;
+    document.querySelectorAll('.keyboard-btn, .phrase-btn, .gaze-target, .app-page-home').forEach(target => {
+        target.classList.remove('dwell-active');
+        target.style.removeProperty('--dwell-progress');
+    });
+}
+
+function setGazeInputPaused(paused) {
+    gazeInputPaused = paused;
+    cancelAllDwell();
+    api.post(paused ? '/api/cursor/disable' : '/api/cursor/enable').catch(() => {});
+    updateGazeInputState();
+}
+
+function updateGazeInputState() {
+    const stateEl = document.getElementById('gazeInputState');
+    const pauseBtn = document.getElementById('pauseGazeInputBtn');
+    const enabledToggle = document.getElementById('dwellEnabledToggle');
+
+    if (enabledToggle) {
+        dwellEnabled = enabledToggle.checked;
+    }
+
+    if (stateEl) {
+        stateEl.classList.toggle('is-paused', gazeInputPaused || !dwellEnabled);
+        if (gazeInputPaused) {
+            stateEl.innerHTML = '<strong>Gaze input paused</strong><span>Dwell selections are stopped until you resume.</span>';
+        } else if (!dwellEnabled) {
+            stateEl.innerHTML = '<strong>Dwell selection off</strong><span>Turn it on in Dwell Time Settings to type with gaze.</span>';
+        } else {
+            stateEl.innerHTML = '<strong>Dwell input ready</strong><span>Look at a key or phrase until the progress completes.</span>';
+        }
+    }
+
+    if (pauseBtn) {
+        pauseBtn.setAttribute('aria-pressed', gazeInputPaused ? 'true' : 'false');
+        pauseBtn.classList.toggle('btn-warning', !gazeInputPaused);
+        pauseBtn.classList.toggle('btn-success', gazeInputPaused);
+        pauseBtn.innerHTML = gazeInputPaused
+            ? '<i class="fas fa-play"></i> Resume Gaze'
+            : '<i class="fas fa-pause"></i> Pause Gaze';
+    }
 }
 
 // Cleanup — do NOT stop camera on page unload
 window.addEventListener('beforeunload', () => {
     clearInterval(gazeUpdateInterval);
-    dwellTimers.forEach(timer => timer.stop());
+    cancelAllDwell();
 });

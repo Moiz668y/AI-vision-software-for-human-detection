@@ -8,30 +8,41 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-hand-holding"></i> AssistiveHands
-            </a>
-            <span class="navbar-text text-white ms-auto">
-                <strong>Gaze Control Active</strong>
-            </span>
-        </div>
-    </nav>
+    {% include '_app_nav.html' %}
 
     <div class="container-fluid p-3">
+        <div class="page-toolbar communication-toolbar">
+            <div>
+                <h1 class="page-title">Communication</h1>
+                <p class="page-subtitle">Gaze Control Active</p>
+            </div>
+            <div class="gaze-safe-actions" aria-label="Communication escape controls">
+                <button class="btn btn-outline-secondary app-page-home" type="button" id="communicationBackBtn">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <a class="btn btn-outline-primary app-page-home" href="/">
+                    <i class="fas fa-house"></i> Dashboard
+                </a>
+                <button class="btn btn-warning app-page-home" type="button" id="pauseGazeInputBtn" aria-pressed="false">
+                    <i class="fas fa-pause"></i> Pause Gaze
+                </button>
+            </div>
+        </div>
+        <div class="gaze-input-state" id="gazeInputState" role="status" aria-live="polite">
+            <strong>Dwell input ready</strong>
+            <span>Look at a key or phrase until the progress completes.</span>
+        </div>
         <div class="row">
             <!-- Text Output -->
             <div class="col-lg-9">
                 <div class="card mb-3">
-                    <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                    <div class="card-header app-card-header">
                         <h5 class="mb-0">Text Output</h5>
                         <div>
-                            <button class="btn btn-sm btn-success" id="speakBtn" title="Speak text">
+                            <button class="btn btn-sm btn-success gaze-target gaze-target-dense" id="speakBtn" title="Speak text">
                                 <i class="fas fa-volume-up"></i> Speak
                             </button>
-                            <button class="btn btn-sm btn-danger" id="clearBtn" title="Clear text">
+                            <button class="btn btn-sm btn-danger gaze-target gaze-target-dense" id="clearBtn" title="Clear text">
                                 <i class="fas fa-trash"></i> Clear
                             </button>
                         </div>
@@ -46,11 +57,9 @@
 
                 <!-- Gaze-Controlled Keyboard -->
                 <div class="card">
-                    <div class="card-header bg-secondary text-white">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">Gaze-Controlled Keyboard</h5>
-                            <span class="badge bg-success" id="gazeStatusBadge">Gaze Active</span>
-                        </div>
+                    <div class="card-header app-card-header">
+                        <h5 class="mb-0">Gaze-Controlled Keyboard</h5>
+                        <span class="badge bg-success" id="gazeStatusBadge">Gaze Active</span>
                     </div>
                     <div class="card-body keyboard-container">
                         <div class="keyboard-row">
@@ -87,9 +96,9 @@
                             <button class="keyboard-btn" data-key="B">B</button>
                             <button class="keyboard-btn" data-key="N">N</button>
                             <button class="keyboard-btn" data-key="M">M</button>
-                            <button class="keyboard-btn" data-key="Space" style="flex: 2;">Space</button>
+                            <button class="keyboard-btn keyboard-btn-wide" data-key="Space">Space</button>
                             <button class="keyboard-btn" data-key="?">?</button>
-                            <button class="keyboard-btn" data-key="Enter" style="flex: 1;">Enter</button>
+                            <button class="keyboard-btn keyboard-btn-standard" data-key="Enter">Enter</button>
                         </div>
 
                         <!-- Dwell Timer Display -->
@@ -104,26 +113,26 @@
             <div class="col-lg-3">
                 <!-- Quick Phrases -->
                 <div class="card mb-3">
-                    <div class="card-header bg-secondary text-white">
+                    <div class="card-header app-card-header">
                         <h5 class="mb-0">Quick Phrases</h5>
                     </div>
                     <div class="card-body phrases-container">
-                        <button class="phrase-btn" data-phrase="Hello, how are you?">
+                        <button class="phrase-btn gaze-target" data-phrase="Hello, how are you?">
                             Hello, how are you?
                         </button>
-                        <button class="phrase-btn" data-phrase="I need help">
+                        <button class="phrase-btn gaze-target" data-phrase="I need help">
                             I need help
                         </button>
-                        <button class="phrase-btn" data-phrase="Thank you">
+                        <button class="phrase-btn gaze-target" data-phrase="Thank you">
                             Thank you
                         </button>
-                        <button class="phrase-btn" data-phrase="Yes / No">
+                        <button class="phrase-btn gaze-target" data-phrase="Yes / No">
                             Yes / No
                         </button>
-                        <button class="phrase-btn" data-phrase="I'm feeling good">
+                        <button class="phrase-btn gaze-target" data-phrase="I'm feeling good">
                             I'm feeling good
                         </button>
-                        <button class="phrase-btn" data-phrase="Please wait">
+                        <button class="phrase-btn gaze-target" data-phrase="Please wait">
                             Please wait
                         </button>
                     </div>
@@ -131,7 +140,7 @@
 
                 <!-- Input Controls -->
                 <div class="card mb-3">
-                    <div class="card-header bg-secondary text-white">
+                    <div class="card-header app-card-header">
                         <h5 class="mb-0">Input Controls</h5>
                     </div>
                     <div class="card-body">
@@ -158,10 +167,16 @@
 
                 <!-- Dwell Settings -->
                 <div class="card">
-                    <div class="card-header bg-secondary text-white">
+                    <div class="card-header app-card-header">
                         <h5 class="mb-0">Dwell Time Settings</h5>
                     </div>
                     <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="dwellEnabledToggle" checked>
+                            <label class="form-check-label" for="dwellEnabledToggle">
+                                Enable dwell selection
+                            </label>
+                        </div>
                         <div class="mb-3">
                             <label for="dwellTimeInput" class="form-label">Dwell Time (seconds)</label>
                             <input type="range" class="form-range" id="dwellTimeInput" 

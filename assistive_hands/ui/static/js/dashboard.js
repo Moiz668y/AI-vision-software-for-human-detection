@@ -7,10 +7,6 @@ let gazeUpdateInterval;
 let sessionDurationInterval;
 let commandCount = 0;
 let gazeControlEnabled = true;  // Toggle to disable gaze cursor control
-let cursorMoveInterval = null;
-let lastCursorX = null;
-let lastCursorY = null;
-let cursorMoveCount = 0;  // For debugging
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Dashboard loaded');
@@ -52,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Add keyboard shortcut to disable gaze control
         setupKeyboardShortcuts();
+        updateGazeControlUi(gazeControlEnabled);
 
     } catch (error) {
         console.error('Dashboard initialization error:', error);
@@ -61,6 +58,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
+        if (isEditableTarget(e.target)) return;
+
         // SPACE = Toggle gaze control on/off
         if (e.code === 'Space') {
             e.preventDefault();
@@ -79,16 +78,54 @@ function setupKeyboardShortcuts() {
     });
 }
 
+function isEditableTarget(target) {
+    if (!target) return false;
+    const tagName = target.tagName;
+    return target.isContentEditable ||
+        tagName === 'INPUT' ||
+        tagName === 'TEXTAREA' ||
+        tagName === 'SELECT';
+}
+
 function toggleGazeControl(enabled) {
     gazeControlEnabled = enabled;
-    const statusEl = document.getElementById('gazeControlStatus');
-    if (statusEl) {
-        statusEl.textContent = enabled ? '✓ ENABLED' : '✗ DISABLED';
-        statusEl.className = enabled ? 'text-success' : 'text-danger';
-    }
+    updateGazeControlUi(enabled);
+    api.post(enabled ? '/api/cursor/enable' : '/api/cursor/disable').catch(() => {});
     const status = enabled ? 'ENABLED' : 'DISABLED';
     console.log(`Gaze control ${status}`);
     showToast(`Gaze control ${status} (Space/ESC to toggle)`, enabled ? 'success' : 'warning');
+}
+
+function updateGazeControlUi(enabled) {
+    const statusEl = document.getElementById('gazeControlStatus');
+    const stateEl = document.getElementById('dashboardGazeState');
+    const enableBtn = document.getElementById('enableGazeBtn');
+    const disableBtn = document.getElementById('disableGazeBtn');
+
+    if (statusEl) {
+        statusEl.textContent = enabled ? 'ENABLED' : 'DISABLED';
+        statusEl.className = enabled ? 'text-success' : 'text-danger';
+    }
+
+    if (stateEl) {
+        stateEl.classList.toggle('is-disabled', !enabled);
+        const helper = stateEl.querySelector('span');
+        if (helper) {
+            helper.textContent = enabled
+                ? 'Your eyes control the cursor'
+                : 'Gaze cursor is paused. Use Enable to resume.';
+        }
+    }
+
+    if (enableBtn) {
+        enableBtn.disabled = enabled;
+        enableBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    }
+
+    if (disableBtn) {
+        disableBtn.disabled = !enabled;
+        disableBtn.setAttribute('aria-pressed', enabled ? 'false' : 'true');
+    }
 }
 
 function setupButtonListeners() {
@@ -120,17 +157,14 @@ function startGazeUpdates() {
             const response = await api.get('/api/gaze/current');
             
             if (response.status === 'success') {
-                const { gaze_normalized, gaze_screen, face_detected, eye_openness, blink_detected, fps } = response;
+                const { gaze_normalized, face_detected, eye_openness, blink_detected, fps } = response;
 
                 // Viewport coords for on-screen gaze cursor
                 const viewX = gaze_normalized.x * window.innerWidth;
                 const viewY = gaze_normalized.y * window.innerHeight;
                 // updateGazeCursor(viewX, viewY);
 
-                // Screen coords for actual system cursor
-                if (face_detected) {
-                    moveSystemCursor(gaze_screen.x, gaze_screen.y);
-                }
+                // Backend owns physical cursor movement; frontend only observes state.
 
                 // FPS display
                 if (fps > 0) {
@@ -197,16 +231,6 @@ if (blink_detected) {
 //     cursor.style.top  = viewY + 'px';
 // }
 
-function moveSystemCursor(screenX, screenY) {
-    if (!gazeControlEnabled) return;
-    const rx = Math.round(screenX);
-    const ry = Math.round(screenY);
-    if (lastCursorX !== null && Math.abs(rx - lastCursorX) < 2 && Math.abs(ry - lastCursorY) < 2) return;
-    lastCursorX = rx;
-    lastCursorY = ry;
-    api.post('/api/cursor/move', { x: rx, y: ry }).catch(() => {});
-}
-
 function startSessionTracker() {
     sessionDurationInterval = setInterval(() => {
         const sessionTimeEl = document.getElementById('sessionTime');
@@ -250,58 +274,15 @@ function toggleSystemPause(btn) {
     if (isPaused) {
         btn.classList.remove('active');
         btn.innerHTML = '<i class="fas fa-pause"></i> Pause System';
+        btn.setAttribute('aria-pressed', 'false');
+        toggleGazeControl(true);
         api.post('/api/camera/start');
     } else {
         btn.classList.add('active');
         btn.innerHTML = '<i class="fas fa-play"></i> Resume System';
+        btn.setAttribute('aria-pressed', 'true');
+        toggleGazeControl(false);
         api.post('/api/camera/stop');
-    }
-}
-
-
-// Move system cursor based on gaze
-function moveSystemCursor(x, y) {
-    // ONLY move if gaze control is ENABLED
-    if (!gazeControlEnabled) {
-        if (cursorMoveInterval) {
-            clearInterval(cursorMoveInterval);
-            cursorMoveInterval = null;
-        }
-        return;
-    }
-    
-    // Store latest gaze position first
-    window.lastGazeX = x;
-    window.lastGazeY = y;
-    
-    // Immediately send cursor move (don't throttle too much - causes lag)
-    const roundedX = Math.round(x);
-    const roundedY = Math.round(y);
-    
-    // Only move if position actually changed significantly
-    if (!lastCursorX || Math.abs(roundedX - lastCursorX) > 20 || Math.abs(roundedY - lastCursorY) > 20) {
-        // Send to backend immediately
-        api.post('/api/cursor/move', { x: roundedX, y: roundedY })
-            .then(resp => {
-                lastCursorX = roundedX;
-                lastCursorY = roundedY;
-                cursorMoveCount++;
-                
-                if (cursorMoveCount % 100 === 0) {
-                    console.log(`Cursor moves: ${cursorMoveCount}, Last pos: (${roundedX}, ${roundedY})`);
-                }
-                
-                if (resp && resp.cursor_enabled === false) {
-                    console.warn('Cursor control disabled:', resp.message);
-                    showToast('Cursor control disabled - may need admin privileges', 'warning');
-                }
-            })
-            .catch(err => {
-                console.error('Cursor move API error:', err);
-                if (err.response?.status === 403) {
-                    showToast('Admin privileges required for cursor control', 'danger');
-                }
-            });
     }
 }
 

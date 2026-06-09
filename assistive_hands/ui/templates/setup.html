@@ -8,12 +8,20 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="bg-light">
-    <div class="container py-5">
+    {% include '_app_nav.html' %}
+
+    <div class="container py-4">
         <!-- Logo and Title -->
         <div class="text-center mb-5">
-            <h1><i class="fas fa-hand-holding text-primary"></i> AssistiveHands</h1>
+            <h1><i class="fas fa-hand-holding text-primary"></i> AssistiveHands Setup</h1>
             <p class="text-muted">Your Context-Based Gaze & Facial Gesture Control System</p>
-            <p class="text-muted" style="font-size: 0.9rem;">Let's set up your personalized interaction system to provide hands-free control</p>
+            <p class="text-muted setup-kicker">Let's set up your personalized interaction system to provide hands-free control</p>
+            <a class="btn btn-outline-primary app-page-home mt-3" href="/">
+                <i class="fas fa-house"></i> Back to Dashboard
+            </a>
+            <a class="btn btn-outline-secondary app-page-home mt-3" href="/" id="skipSetupBtn">
+                <i class="fas fa-forward"></i> Skip Setup
+            </a>
         </div>
 
         <!-- Setup Progress -->
@@ -27,18 +35,6 @@
                     <div class="setup-step" data-step="2">
                         <div class="step-number">2</div>
                         <div class="step-label">Camera</div>
-                    </div>
-                    <div class="setup-step" data-step="3">
-                        <div class="step-number">3</div>
-                        <div class="step-label">Calibration</div>
-                    </div>
-                    <div class="setup-step" data-step="4">
-                        <div class="step-number">4</div>
-                        <div class="step-label">Settings</div>
-                    </div>
-                    <div class="setup-step" data-step="5">
-                        <div class="step-number">5</div>
-                        <div class="step-label">Complete</div>
                     </div>
                 </div>
             </div>
@@ -123,7 +119,7 @@
                             <h4>Camera Alignment & Face Detection</h4>
                             <p>Position yourself in front of the camera and ensure your face is clearly visible.</p>
                             <div class="camera-preview mb-3">
-                                <img id="setupCameraFeed" src="{{ url_for('camera_feed') }}" alt="Camera Feed" class="img-fluid" style="max-height: 400px; width: 100%; object-fit: cover;">
+                                <img id="setupCameraFeed" src="{{ url_for('camera_feed') }}" alt="Camera Feed" class="img-fluid setup-camera-feed">
                             </div>
                             <div id="alignmentChecklist">
                                 <h6>Alignment Checklist:</h6>
@@ -145,13 +141,13 @@
 
                     <!-- Navigation Buttons -->
                     <div class="card-footer bg-light d-flex justify-content-between">
-                        <button class="btn btn-secondary" id="prevBtn" style="display: none;">
+                        <button class="btn btn-secondary setup-hidden" id="prevBtn">
                             <i class="fas fa-arrow-left"></i> Back
                         </button>
                         <button class="btn btn-primary" id="nextBtn">
                             Next <i class="fas fa-arrow-right"></i>
                         </button>
-                        <button class="btn btn-success" id="completeBtn" style="display: none;">
+                        <button class="btn btn-success setup-hidden" id="completeBtn">
                             <i class="fas fa-check"></i> Complete Setup
                         </button>
                     </div>
