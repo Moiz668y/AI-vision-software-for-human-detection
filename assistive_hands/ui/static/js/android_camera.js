@@ -13,6 +13,7 @@ class AndroidCameraManager {
         this.cursorX = 0;
         this.cursorY = 0;
         this.gazeEnabled = true;
+        this.androidModeActive = false;
         this.pollingInterval = null;
         this.init();
     }
@@ -22,8 +23,11 @@ class AndroidCameraManager {
         this.setupEventListeners();
         this.setupKeyboardShortcuts();
         this.setupGazeCursor();
-        await this.refreshDeviceList();
-        this.startStatusPolling();
+        this.androidModeActive = document.getElementById('android-camera-tab')?.classList.contains('active') || false;
+        if (this.androidModeActive) {
+            await this.refreshDeviceList();
+            this.startStatusPolling();
+        }
     }
 
     setupVideoElement() {
@@ -58,7 +62,7 @@ class AndroidCameraManager {
             display: none;
             z-index: 9999;
             box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
-            transition: all 0.05s ease-out;
+            transition: opacity 0.1s ease, box-shadow 0.1s ease;
         `;
         document.body.appendChild(cursorOverlay);
         this.gazeCursor = cursorOverlay;
@@ -79,6 +83,12 @@ class AndroidCameraManager {
                     e.preventDefault();
                     this.switchToAndroidCamera();
                     break;
+                default:
+                    if (!this.androidModeActive) return;
+                    break;
+            }
+
+            switch(e.key.toUpperCase()) {
                 case 'D': // Switch to Desktop camera
                     e.preventDefault();
                     this.switchToDesktopCamera();
@@ -114,7 +124,7 @@ class AndroidCameraManager {
 
         // Track mouse movement for gaze cursor
         document.addEventListener('mousemove', (e) => {
-            if (this.gazeEnabled && this.gazeCursor) {
+            if (this.androidModeActive && this.gazeEnabled && this.gazeCursor) {
                 this.cursorX = e.clientX;
                 this.cursorY = e.clientY;
                 this.gazeCursor.style.left = (e.clientX - 10) + 'px';
@@ -164,6 +174,20 @@ class AndroidCameraManager {
 
         document.getElementById('refreshDevicesBtn')?.addEventListener('click', () => {
             this.refreshDeviceList();
+        });
+
+        document.getElementById('android-camera-tab')?.addEventListener('shown.bs.tab', async () => {
+            this.androidModeActive = true;
+            await this.refreshDeviceList();
+            this.startStatusPolling();
+        });
+
+        document.getElementById('desktop-camera-tab')?.addEventListener('shown.bs.tab', () => {
+            this.androidModeActive = false;
+            this.stopStatusPolling();
+            if (this.gazeCursor) {
+                this.gazeCursor.style.display = 'none';
+            }
         });
     }
 
@@ -309,6 +333,7 @@ class AndroidCameraManager {
     }
 
     startStatusPolling() {
+        if (!this.androidModeActive || this.pollingInterval) return;
         this.pollingInterval = setInterval(() => this.updateStatus(), 2000);
     }
 

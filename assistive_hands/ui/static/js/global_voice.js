@@ -3,6 +3,8 @@
 (function () {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const AUTO_START_VOICE = true;
+    const STALE_ACTIVE_TIMEOUT_MS = 15000;
+    const PERIODIC_RECREATE_MS = 5 * 60 * 1000;
 
     const state = {
         recognition: null,
@@ -11,12 +13,30 @@
         active: false,
         starting: false,
         restartTimer: null,
+        watchdogTimer: null,
         scrollTimer: null,
         scrollSystemTimer: null,
+        statusResetTimer: null,
         lastHandledCommand: '',
         lastHandledAt: 0,
-        lastInterimTranscript: ''
+        lastInterimTranscript: '',
+        lastVoiceActivityAt: 0,
+        recognitionStartedAt: 0,
+        ignoreAbortUntil: 0,
+        recovering: false,
+        abortRestartTimer: null,
+        abortBackoffMs: 600,
+        stats: {
+            starts: 0,
+            results: 0,
+            errors: 0,
+            ends: 0,
+            recreates: 0,
+            lastError: ''
+        }
     };
+
+    window.AssistiveHandsGlobalVoiceOwner = true;
 
     const routes = {
         dashboard: '/',
@@ -66,6 +86,11 @@
     }
 
     function setStatus(message, mode) {
+        if (state.statusResetTimer) {
+            clearTimeout(state.statusResetTimer);
+            state.statusResetTimer = null;
+        }
+
         const statusMode = mode || 'idle';
         document.querySelectorAll('#voiceStatus, #globalVoiceStatus').forEach(function (statusEl) {
             statusEl.classList.remove('is-listening', 'is-error', 'is-unsupported');
@@ -85,6 +110,17 @@
 
             statusEl.replaceChildren(icon, text);
         });
+    }
+
+    function resetStatusToListeningSoon(delay) {
+        if (state.statusResetTimer) {
+            clearTimeout(state.statusResetTimer);
+        }
+        state.statusResetTimer = setTimeout(function () {
+            state.statusResetTimer = null;
+            if (!state.desired || state.scrollTimer || state.scrollSystemTimer) return;
+            setStatus('Listening', 'listening');
+        }, delay || 600);
     }
 
     function setVoiceButton() {
@@ -120,6 +156,26 @@
     function commandMatches(command, aliases) {
         const plain = cleanCommand(command);
         return aliases.indexOf(plain) !== -1;
+    }
+
+    function commandTokens(command) {
+        return cleanCommand(command)
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .split(/\s+/)
+            .filter(Boolean);
+    }
+
+    function hasAnyToken(tokens, words) {
+        return tokens.some(function (token) {
+            return words.indexOf(token) !== -1;
+        });
+    }
+
+    function hasAnyPhrase(command, phrases) {
+        const plain = cleanCommand(command);
+        return phrases.some(function (phrase) {
+            return plain.indexOf(phrase) !== -1;
+        });
     }
 
     function stripRouteWords(routeName) {
@@ -230,14 +286,24 @@
     }
 
     function stopScroll() {
+        const wasScrolling = Boolean(state.scrollTimer || state.scrollSystemTimer);
         if (state.scrollTimer) {
             cancelAnimationFrame(state.scrollTimer);
-            clearInterval(state.scrollTimer);
             state.scrollTimer = null;
         }
         if (state.scrollSystemTimer) {
             clearInterval(state.scrollSystemTimer);
             state.scrollSystemTimer = null;
+        }
+        if (wasScrolling) {
+            post('/api/command', {
+                name: 'voice_scroll_state',
+                source: 'voice',
+                payload: {active: false, system_scroll: true}
+            }).catch(function (error) {
+                console.error('Backend scroll state update failed:', error);
+            });
+            console.debug('[VOICE] scroll inactive');
         }
         setStatus(state.desired ? 'Listening' : 'Voice idle', state.desired ? 'listening' : 'idle');
     }
@@ -246,16 +312,20 @@
         stopScroll();
 
         const profiles = {
-            normal: {systemAmount: 45, pageAmount: 500, pageInterval: 10, systemInterval: 220},
-            fast: {systemAmount: 90, pageAmount: 2000, pageInterval: 10, systemInterval: 260}
+            normal: {pageAmount: 1000, pageInterval: 30},
+            fast: {pageAmount: 3000, pageInterval: 30}
         };
         const profile = profiles[speed || 'normal'] || profiles.normal;
         const pageAmount = direction > 0 ? profile.pageAmount : -profile.pageAmount;
-        const systemAmount = direction > 0 ? -profile.systemAmount : profile.systemAmount;
+        const usePageScroll = document.hasFocus() && !document.hidden;
         let lastPageScrollAt = performance.now();
 
         function scrollPageFrame(now) {
             if (!state.scrollTimer) return;
+            if (!usePageScroll) {
+                state.scrollTimer = requestAnimationFrame(scrollPageFrame);
+                return;
+            }
 
             const elapsed = now - lastPageScrollAt;
             if (elapsed >= profile.pageInterval) {
@@ -269,36 +339,69 @@
 
         state.scrollTimer = requestAnimationFrame(scrollPageFrame);
 
-        state.scrollSystemTimer = setInterval(function () {
-            post('/api/mouse/scroll', {amount: systemAmount}).catch(function (error) {
-                console.error('System scroll failed:', error);
-            });
-        }, profile.systemInterval);
+        post('/api/command', {
+            name: 'voice_scroll_state',
+            source: 'voice',
+            payload: {
+                active: true,
+                direction: direction,
+                speed: speed || 'normal',
+                system_scroll: !usePageScroll
+            }
+        }).catch(function (error) {
+            console.error('Backend scroll state update failed:', error);
+        });
 
+        console.debug('[VOICE] scroll active', {
+            direction: direction > 0 ? 'down' : 'up',
+            speed: speed || 'normal',
+            mode: usePageScroll ? 'page' : 'system'
+        });
         setStatus((speed === 'fast' ? 'Fast scrolling ' : 'Scrolling ') + (direction > 0 ? 'down' : 'up'), 'listening');
     }
 
     function getScrollAction(command) {
+        const plain = cleanCommand(command);
+        const tokens = commandTokens(plain);
+        const scrollingActive = Boolean(state.scrollTimer || state.scrollSystemTimer);
+        const stopWords = ['stop', 'halt', 'cancel', 'end', 'bas', 'bus', 'ruko', 'ruk', 'rok', 'band'];
+        const scrollWords = ['scroll', 'scrolling', 'scrolled', 'skroll', 'school'];
+        const downWords = ['down', 'downward', 'downwards', 'lower', 'below', 'bottom', 'neeche', 'niche'];
+        const upWords = ['up', 'upward', 'upwards', 'upper', 'above', 'top', 'upar'];
+        const fastWords = ['fast', 'quick', 'quickly', 'rapid', 'rapidly', 'very', 'super', 'jaldi', 'tez'];
+        const pageWords = ['page', 'move', 'go', 'keep', 'start'];
+        const wantsStop = hasAnyToken(tokens, stopWords);
+        const mentionsScroll = hasAnyToken(tokens, scrollWords);
+        const wantsDown = hasAnyToken(tokens, downWords) || hasAnyPhrase(plain, ['page down', 'move down', 'go down']);
+        const wantsUp = hasAnyToken(tokens, upWords) || hasAnyPhrase(plain, ['page up', 'move up', 'go up']);
+        const wantsFast = hasAnyToken(tokens, fastWords) || hasAnyPhrase(plain, ['speed scroll', 'scroll faster']);
+        const wantsPageMove = hasAnyToken(tokens, pageWords);
+
         if (
             commandMatches(command, ['stop scroll', 'stop scrolling', 'stop scroll down', 'stop scroll up', 'halt scroll', 'halt scrolling', 'stop moving', 'stop page', 'stop page scroll', 'stop page scrolling', 'scroll band karo', 'scrolling band karo', 'scroll rok do']) ||
-            (state.scrollTimer && commandMatches(command, ['stop', 'stop it', 'bas', 'bus', 'ruk jao', 'ruko', 'rok do', 'band karo', 'scroll band', 'scrolling band']))
+            (scrollingActive && (wantsStop || commandMatches(command, ['stop it', 'ruk jao', 'rok do', 'band karo', 'scroll band', 'scrolling band']))) ||
+            (wantsStop && mentionsScroll)
         ) {
             return {type: 'stop'};
         }
 
-        if (commandMatches(command, ['fast scroll down', 'scroll down fast', 'very fast scroll down', 'super scroll down', 'page down fast', 'fast neeche', 'fast niche', 'jaldi neeche', 'jaldi niche'])) {
+        if (commandMatches(command, ['fast scroll down', 'scroll down fast', 'very fast scroll down', 'super scroll down', 'page down fast', 'fast neeche', 'fast niche', 'jaldi neeche', 'jaldi niche']) ||
+            (wantsDown && wantsFast && (mentionsScroll || wantsPageMove))) {
             return {type: 'start', direction: 1, speed: 'fast'};
         }
 
-        if (commandMatches(command, ['fast scroll up', 'scroll up fast', 'very fast scroll up', 'super scroll up', 'page up fast', 'fast upar', 'jaldi upar'])) {
+        if (commandMatches(command, ['fast scroll up', 'scroll up fast', 'very fast scroll up', 'super scroll up', 'page up fast', 'fast upar', 'jaldi upar']) ||
+            (wantsUp && wantsFast && (mentionsScroll || wantsPageMove))) {
             return {type: 'start', direction: -1, speed: 'fast'};
         }
 
-        if (commandMatches(command, ['scroll down', 'start scroll down', 'keep scrolling down', 'go down', 'move down', 'page down', 'page down slowly', 'neeche', 'niche', 'scroll neeche', 'scroll niche', 'page neeche', 'page niche', 'neeche jao', 'niche jao'])) {
+        if (commandMatches(command, ['scroll down', 'start scroll down', 'keep scrolling down', 'go down', 'move down', 'page down', 'page down slowly', 'neeche', 'niche', 'scroll neeche', 'scroll niche', 'page neeche', 'page niche', 'neeche jao', 'niche jao']) ||
+            (wantsDown && (mentionsScroll || wantsPageMove))) {
             return {type: 'start', direction: 1, speed: 'normal'};
         }
 
-        if (commandMatches(command, ['scroll up', 'start scroll up', 'keep scrolling up', 'go up', 'move up', 'page up', 'page up slowly', 'upar', 'scroll upar', 'page upar', 'upar jao'])) {
+        if (commandMatches(command, ['scroll up', 'start scroll up', 'keep scrolling up', 'go up', 'move up', 'page up', 'page up slowly', 'upar', 'scroll upar', 'page upar', 'upar jao']) ||
+            (wantsUp && (mentionsScroll || wantsPageMove))) {
             return {type: 'start', direction: -1, speed: 'normal'};
         }
 
@@ -433,6 +536,12 @@
             end: 'end',
             'page up': 'pageup',
             'page down': 'pagedown',
+            window: 'win',
+            windows: 'win',
+            'window key': 'win',
+            'windows key': 'win',
+            'window button': 'win',
+            'windows button': 'win',
             delete: 'delete',
             'forward delete': 'delete',
             'delete key': 'delete'
@@ -440,11 +549,13 @@
 
         if (commandMatches(command, ['click', 'mouse click', 'left click', 'select', 'choose', 'press', 'click karo', 'mouse click karo', 'left click karo', 'select karo', 'choose karo', 'press karo', 'dabao'])) {
             clickMouse(1);
+            resetStatusToListeningSoon(500);
             return;
         }
 
         if (commandMatches(command, ['double click', 'double-click', 'double mouse click', 'double click karo'])) {
             clickMouse(2);
+            resetStatusToListeningSoon(500);
             return;
         }
 
@@ -554,6 +665,96 @@
             clearTimeout(state.restartTimer);
             state.restartTimer = null;
         }
+        if (state.abortRestartTimer) {
+            clearTimeout(state.abortRestartTimer);
+            state.abortRestartTimer = null;
+        }
+    }
+
+    function clearWatchdogTimer() {
+        if (state.watchdogTimer) {
+            clearInterval(state.watchdogTimer);
+            state.watchdogTimer = null;
+        }
+    }
+
+    function markVoiceActivity(type, error) {
+        state.lastVoiceActivityAt = Date.now();
+        if (type === 'start') state.stats.starts += 1;
+        if (type === 'result') state.stats.results += 1;
+        if (type === 'error') {
+            state.stats.errors += 1;
+            state.stats.lastError = error || '';
+        }
+        if (type === 'end') state.stats.ends += 1;
+    }
+
+    function resetRecognitionObject() {
+        if (!state.recognition) return;
+        state.ignoreAbortUntil = Date.now() + 2000;
+        try {
+            state.recognition.onstart = null;
+            state.recognition.onresult = null;
+            state.recognition.onend = null;
+            state.recognition.abort();
+        } catch (error) {
+            console.warn('Global voice abort failed:', error);
+        }
+        state.recognition = null;
+        state.active = false;
+        state.starting = false;
+    }
+
+    function recoverFromAbort() {
+        if (!state.desired || state.recovering) return;
+        state.recovering = true;
+        state.active = false;
+        state.starting = false;
+        const delay = state.abortBackoffMs;
+        state.abortBackoffMs = Math.min(5000, Math.round(state.abortBackoffMs * 1.6));
+        resetRecognitionObject();
+        state.abortRestartTimer = setTimeout(function () {
+            state.abortRestartTimer = null;
+            state.recovering = false;
+            if (state.desired) {
+                tryStartRecognition(true);
+            }
+        }, delay);
+    }
+
+    function recreateRecognition(reason) {
+        if (!state.desired || state.recovering) return;
+        console.warn('Global voice recreating recognizer:', reason);
+        state.recovering = true;
+        state.stats.recreates += 1;
+        resetRecognitionObject();
+        setTimeout(function () {
+            state.recovering = false;
+            if (state.desired) {
+                tryStartRecognition(true);
+            }
+        }, 350);
+    }
+
+    function startWatchdog() {
+        clearWatchdogTimer();
+        state.watchdogTimer = setInterval(function () {
+            if (!state.desired || document.hidden) return;
+            const now = Date.now();
+            const idleFor = state.lastVoiceActivityAt ? now - state.lastVoiceActivityAt : 0;
+            const runningFor = state.recognitionStartedAt ? now - state.recognitionStartedAt : 0;
+            if (state.active && idleFor > STALE_ACTIVE_TIMEOUT_MS) {
+                recreateRecognition('stale-active-' + idleFor + 'ms');
+                return;
+            }
+            if (state.active && runningFor > PERIODIC_RECREATE_MS) {
+                recreateRecognition('periodic-refresh');
+                return;
+            }
+            if (!state.active && !state.starting) {
+                restartRecognitionSoon(100);
+            }
+        }, 1000);
     }
 
     function restartRecognitionSoon(delay) {
@@ -570,39 +771,62 @@
 
         state.recognition = new SpeechRecognition();
         state.recognition.continuous = true;
-        state.recognition.interimResults = true;
-        state.recognition.maxAlternatives = 3;
+        state.recognition.interimResults = false;
+        state.recognition.maxAlternatives = 1;
         state.recognition.lang = 'en-US';
 
         state.recognition.onstart = function () {
             state.active = true;
             state.starting = false;
+            state.ignoreAbortUntil = 0;
+            state.abortBackoffMs = 600;
+            state.recognitionStartedAt = Date.now();
+            markVoiceActivity('start');
             setStatus('Listening', 'listening');
             setVoiceButton();
         };
 
         state.recognition.onresult = function (event) {
+            markVoiceActivity('result');
             for (let i = event.resultIndex; i < event.results.length; i += 1) {
                 const transcript = event.results[i][0].transcript;
                 if (!event.results[i].isFinal) {
                     const interim = transcript.trim();
-                    if (interim && interim !== state.lastInterimTranscript) {
+                    if (interim) {
                         state.lastInterimTranscript = interim;
-                        setStatus('Hearing: ' + interim, 'listening');
                     }
                     continue;
                 }
 
                 state.lastInterimTranscript = '';
                 console.log('Global voice heard:', transcript);
-                setStatus('Heard: ' + transcript.trim(), 'listening');
                 handleCommand(transcript);
+                resetStatusToListeningSoon(700);
             }
         };
 
         state.recognition.onerror = function (event) {
-            console.error('Global voice error:', event.error);
+            const expectedAbort = event.error === 'aborted' && Date.now() < state.ignoreAbortUntil;
+            if (expectedAbort) {
+                console.debug('Global voice recognizer aborted during planned recreate');
+            } else if (event.error === 'aborted') {
+                console.debug('Global voice recognizer aborted by browser; recreating');
+            } else {
+                console.error('Global voice error:', event.error);
+            }
+            markVoiceActivity('error', event.error);
             state.starting = false;
+
+            if (expectedAbort) {
+                state.active = false;
+                return;
+            }
+
+            if (event.error === 'aborted' && state.desired) {
+                setStatus('Listening', 'listening');
+                recoverFromAbort();
+                return;
+            }
 
             if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                 state.desired = false;
@@ -624,15 +848,8 @@
 
             if (event.error === 'no-speech') {
                 state.active = false;
-                setStatus('No speech heard - retrying', 'listening');
-                restartRecognitionSoon(350);
-                return;
-            }
-
-            if (event.error === 'aborted' && state.desired) {
-                state.active = false;
-                setStatus('Listening restarted', 'listening');
-                restartRecognitionSoon(350);
+                setStatus('Listening', 'listening');
+                restartRecognitionSoon(120);
                 return;
             }
 
@@ -648,11 +865,12 @@
         };
 
         state.recognition.onend = function () {
+            markVoiceActivity('end');
             state.active = false;
             state.starting = false;
             if (state.desired) {
                 setStatus('Listening', 'listening');
-                restartRecognitionSoon(700);
+                restartRecognitionSoon(120);
                 return;
             }
             setStatus('Voice idle', 'idle');
@@ -678,6 +896,8 @@
         clearRestartTimer();
         state.starting = true;
         state.desired = true;
+        state.lastVoiceActivityAt = Date.now();
+        startWatchdog();
         setStatus(isRestart ? 'Listening' : 'Voice starting', 'listening');
         setVoiceButton();
 
@@ -702,7 +922,9 @@
         state.desired = false;
         state.active = false;
         state.starting = false;
+        state.recovering = false;
         clearRestartTimer();
+        clearWatchdogTimer();
         stopScroll();
         try {
             if (state.recognition) {
@@ -736,6 +958,18 @@
         },
         isSupported: function () {
             return state.supported;
+        },
+        diagnostics: function () {
+            const now = Date.now();
+            return {
+                desired: state.desired,
+                active: state.active,
+                starting: state.starting,
+                recovering: state.recovering,
+                lastVoiceActivityAge: state.lastVoiceActivityAt ? now - state.lastVoiceActivityAt : null,
+                recognitionAge: state.recognitionStartedAt ? now - state.recognitionStartedAt : null,
+                stats: Object.assign({}, state.stats)
+            };
         }
     };
 

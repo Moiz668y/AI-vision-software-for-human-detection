@@ -4,7 +4,10 @@
 
 const performanceMonitor = new PerformanceMonitor();
 let gazeUpdateInterval;
+let gazeUpdateInFlight = false;
 let sessionDurationInterval;
+let statusUpdateInterval;
+let telemetryHandler;
 let commandCount = 0;
 let gazeControlEnabled = true;  // Toggle to disable gaze cursor control
 
@@ -133,7 +136,6 @@ function updateGazeControlUi(enabled) {
 function setupButtonListeners() {
     const recalibrateBtn = document.getElementById('recalibrateBtn');
     const textEntryBtn = document.getElementById('textEntryBtn');
-    const voiceBtn = document.getElementById('voiceBtn');
     const pauseBtn = document.getElementById('pauseBtn');
 
     if (recalibrateBtn) {
@@ -148,16 +150,6 @@ function setupButtonListeners() {
         });
     }
 
-    if (voiceBtn) {
-        voiceBtn.addEventListener('click', () => {
-            if (window.AssistiveHandsVoice && window.AssistiveHandsVoice.start()) {
-                showToast('Voice commands active', 'info');
-            } else {
-                showToast('Voice commands need Chrome or Edge microphone access', 'warning');
-            }
-        });
-    }
-
     if (pauseBtn) {
         pauseBtn.addEventListener('click', () => {
             toggleSystemPause(pauseBtn);
@@ -166,60 +158,79 @@ function setupButtonListeners() {
 }
 
 function startGazeUpdates() {
+    if (window.AssistiveHandsTelemetry) {
+        telemetryHandler = (event) => {
+            handleGazeTelemetry(event.detail.telemetry);
+        };
+        window.addEventListener('assistivehands:telemetry', telemetryHandler);
+        window.AssistiveHandsTelemetry.connect();
+        return;
+    }
+
     gazeUpdateInterval = setInterval(async () => {
+        if (gazeUpdateInFlight) return;
+        gazeUpdateInFlight = true;
         try {
             const response = await api.get('/api/gaze/current');
             
             if (response.status === 'success') {
-                const { gaze_normalized, face_detected, eye_openness, blink_detected, fps } = response;
-
-                // Viewport coords for on-screen gaze cursor
-                const viewX = gaze_normalized.x * window.innerWidth;
-                const viewY = gaze_normalized.y * window.innerHeight;
-                // updateGazeCursor(viewX, viewY);
-
-                // Backend owns physical cursor movement; frontend only observes state.
-
-                // FPS display
-                if (fps > 0) {
-                    document.getElementById('responseTime').textContent = (1/fps).toFixed(2) + 's';
-                }
-
-                // Face detection status
-                const faceDetectionStatus = document.getElementById('faceDetectionStatus');
-                if (faceDetectionStatus) {
-                    if (face_detected) {
-                        faceDetectionStatus.textContent = 'Active';
-                        faceDetectionStatus.className = 'status-badge status-active';
-                    } else {
-                        faceDetectionStatus.textContent = 'Inactive';
-                        faceDetectionStatus.className = 'status-badge bg-warning';
-                    }
-                }
-
-                // Double blink detection - SIMPLE VERSION
-if (blink_detected) {
-    recordCommand();
-    if (!window.lastBlinkTime) {
-        window.lastBlinkTime = Date.now();
-    } else {
-        let timeBetween = Date.now() - window.lastBlinkTime;
-        if (timeBetween > 80 && timeBetween < 500) {
-            // Double blink! Send click
-            console.log('Double blink detected!');
-            api.post('/api/mouse/click').catch(() => {});
-            window.lastBlinkTime = null;
-        } else {
-            window.lastBlinkTime = Date.now();
-        }
-    }
-}
-                performanceMonitor.recordFrame();
+                handleGazeTelemetry(response);
             }
         } catch (error) {
             console.error('Gaze update error:', error);
+        } finally {
+            gazeUpdateInFlight = false;
         }
-    }, 50); // Update every 50ms for smoother movement 
+    }, 250); // Backend owns cursor movement; dashboard only refreshes telemetry.
+}
+
+function handleGazeTelemetry(data) {
+    const gaze = data.gaze || {};
+    const normalized = data.gaze_normalized || gaze.normalized || {};
+    const faceDetected = data.face_detected ?? gaze.face_detected;
+    const blinkDetected = data.blink_detected ?? gaze.blink_detected;
+    const fps = data.fps || data.cursor?.fps || data.camera?.fps || 0;
+
+    // Backend owns physical cursor movement; frontend only observes state.
+    if (fps > 0) {
+        const responseTimeEl = document.getElementById('responseTime');
+        if (responseTimeEl) {
+            responseTimeEl.textContent = (1 / fps).toFixed(2) + 's';
+        }
+    }
+
+    const faceDetectionStatus = document.getElementById('faceDetectionStatus');
+    if (faceDetectionStatus) {
+        if (faceDetected) {
+            faceDetectionStatus.textContent = 'Active';
+            faceDetectionStatus.className = 'status-badge status-active';
+        } else {
+            faceDetectionStatus.textContent = 'Inactive';
+            faceDetectionStatus.className = 'status-badge bg-warning';
+        }
+    }
+
+    const recordingBadge = document.getElementById('recordingBadge');
+    if (recordingBadge && data.camera) {
+        if (data.camera.running) {
+            recordingBadge.classList.add('bg-success');
+            recordingBadge.classList.remove('bg-danger');
+            recordingBadge.innerHTML = '<i class="fas fa-circle"></i> Live';
+        } else {
+            recordingBadge.classList.remove('bg-success');
+            recordingBadge.classList.add('bg-danger');
+            recordingBadge.innerHTML = '<i class="fas fa-circle"></i> Offline';
+        }
+    }
+
+    // Blink click is backend-owned now; dashboard records telemetry only.
+    if (blinkDetected) {
+        recordCommand();
+    }
+
+    if (normalized.x !== undefined && normalized.y !== undefined) {
+        performanceMonitor.recordFrame();
+    }
 }
 
 // function updateGazeCursor(viewX, viewY) {
@@ -256,7 +267,11 @@ function startSessionTracker() {
 }
 
 function updateSystemStatus() {
-    setInterval(async () => {
+    if (window.AssistiveHandsTelemetry) {
+        return;
+    }
+
+    statusUpdateInterval = setInterval(async () => {
         try {
             const response = await api.get('/api/status');
             if (response.status === 'success') {
@@ -304,4 +319,8 @@ function toggleSystemPause(btn) {
 window.addEventListener('beforeunload', () => {
     clearInterval(gazeUpdateInterval);
     clearInterval(sessionDurationInterval);
+    clearInterval(statusUpdateInterval);
+    if (telemetryHandler) {
+        window.removeEventListener('assistivehands:telemetry', telemetryHandler);
+    }
 });

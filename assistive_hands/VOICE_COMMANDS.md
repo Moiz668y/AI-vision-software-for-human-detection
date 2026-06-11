@@ -51,30 +51,39 @@ You can also say `go to`, `go`, `open`, `show`, `switch to`, `navigate to`, or `
 | `click karo` | Perform a mouse click |
 | `double click karo` | Perform a double click |
 | `scroll down` | Start scrolling down |
+| `scrolling down` | Start scrolling down |
+| `down scroll` | Start scrolling down |
 | `start scroll down` | Start scrolling down |
 | `keep scrolling down` | Start scrolling down |
 | `go down` | Start scrolling down |
 | `move down` | Start scrolling down |
 | `page down` | Start scrolling down |
+| `scroll down please` | Start scrolling down |
 | `neeche` | Start scrolling down |
 | `niche` | Start scrolling down |
 | `scroll neeche` | Start scrolling down |
 | `fast scroll down` | Start very fast scrolling down |
 | `scroll down fast` | Start very fast scrolling down |
+| `quick scroll down` | Start very fast scrolling down |
 | `jaldi neeche` | Start very fast scrolling down |
 | `scroll up` | Start scrolling up |
+| `scrolling up` | Start scrolling up |
+| `up scroll` | Start scrolling up |
 | `start scroll up` | Start scrolling up |
 | `keep scrolling up` | Start scrolling up |
 | `go up` | Start scrolling up |
 | `move up` | Start scrolling up |
 | `page up` | Start scrolling up |
+| `scroll up please` | Start scrolling up |
 | `upar` | Start scrolling up |
 | `scroll upar` | Start scrolling up |
 | `fast scroll up` | Start very fast scrolling up |
 | `scroll up fast` | Start very fast scrolling up |
+| `quick scroll up` | Start very fast scrolling up |
 | `jaldi upar` | Start very fast scrolling up |
 | `stop scroll` | Stop scrolling |
 | `stop scrolling` | Stop scrolling |
+| `stop scrolling now` | Stop scrolling |
 | `stop scroll down` | Stop scrolling |
 | `stop scroll up` | Stop scrolling |
 | `halt scroll` | Stop scrolling |
@@ -207,6 +216,9 @@ Say the key name directly, or say `press`, `key`, or `keyboard` before it.
 | `end` | End |
 | `page up` | Page Up |
 | `page down` | Page Down |
+| `press window` | Windows key |
+| `press window key` | Windows key |
+| `press window button` | Windows key |
 | `delete key` | Delete |
 | `forward delete` | Delete |
 

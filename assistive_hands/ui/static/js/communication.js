@@ -5,6 +5,10 @@
 let displayText = '';
 let dwellTime = 1.0;
 let gazeUpdateInterval;
+let gazeTrackingStopped = false;
+let gazeRequestInFlight = false;
+let latestGazeRequestId = 0;
+let telemetryUnsubscribe = null;
 let dwellEnabled = true;
 let gazeInputPaused = false;
 let activeDwellId = null;
@@ -228,11 +232,50 @@ function refreshGazeTargets() {
 }
 
 function startGazeTracking() {
-    gazeUpdateInterval = setInterval(async () => {
+    gazeTrackingStopped = false;
+
+    function handleTelemetry(event) {
+        if (gazeTrackingStopped) return;
+        const telemetry = event.detail.telemetry || {};
+        const gaze = telemetry.gaze || {};
+        const gazeNormalized = telemetry.gaze_normalized || gaze.normalized;
+        if (!gazeNormalized) return;
+
+        const viewX = gazeNormalized.x * window.innerWidth;
+        const viewY = gazeNormalized.y * window.innerHeight;
+        requestAnimationFrame(() => {
+            if (gazeTrackingStopped) return;
+            mapper.updateGaze(viewX, viewY);
+            updateDwellTimers();
+        });
+    }
+
+    if (window.AssistiveHandsTelemetry) {
+        telemetryUnsubscribe = window.AssistiveHandsTelemetry.subscribe((telemetry, telemetryState, event) => {
+            handleTelemetry(event);
+        });
+        window.AssistiveHandsTelemetry.connect();
+        return;
+    }
+
+    async function pollGaze() {
+        if (gazeTrackingStopped) return;
+        if (document.hidden) {
+            gazeUpdateInterval = setTimeout(pollGaze, 250);
+            return;
+        }
+
+        if (gazeRequestInFlight) {
+            gazeUpdateInterval = setTimeout(pollGaze, 100);
+            return;
+        }
+
+        gazeRequestInFlight = true;
+        const requestId = ++latestGazeRequestId;
         try {
             const response = await api.get('/api/gaze/current');
 
-            if (response.status === 'success') {
+            if (response.status === 'success' && requestId === latestGazeRequestId) {
                 const { gaze_normalized } = response;
 
                 // Convert normalized gaze (0-1) to VIEWPORT pixels for element hit-testing
@@ -240,21 +283,29 @@ function startGazeTracking() {
                 const viewX = gaze_normalized.x * window.innerWidth;
                 const viewY = gaze_normalized.y * window.innerHeight;
 
-                // Update on-screen gaze cursor (viewport coords)
-                updateGazeCursor(viewX, viewY);
+                requestAnimationFrame(() => {
+                    if (requestId !== latestGazeRequestId || gazeTrackingStopped) return;
 
-                // Update keyboard element mapping (viewport coords)
-                mapper.updateGaze(viewX, viewY);
+                    // Update keyboard element mapping (viewport coords)
+                    mapper.updateGaze(viewX, viewY);
 
-                // Trigger dwell timer for hovered key
-                updateDwellTimers();
+                    // Trigger dwell timer for hovered key
+                    updateDwellTimers();
+                });
 
                 // Backend owns physical cursor movement; this page only uses gaze for UI hit-testing.
             }
         } catch (error) {
             console.error('Gaze tracking error:', error);
+        } finally {
+            gazeRequestInFlight = false;
+            if (!gazeTrackingStopped) {
+                gazeUpdateInterval = setTimeout(pollGaze, 100);
+            }
         }
-    }, 50);
+    }
+
+    pollGaze();
 }
 
 function updateGazeCursor(viewX, viewY) {
@@ -264,20 +315,21 @@ function updateGazeCursor(viewX, viewY) {
         cursor.id = 'gazeCursor';
         cursor.style.cssText = `
             position: fixed;
+            top: 0;
+            left: 0;
             width: 22px; height: 22px;
             border: 3px solid #00ff88;
             border-radius: 50%;
             background: rgba(0,255,136,0.15);
             pointer-events: none;
             z-index: 9999;
-            transform: translate(-50%, -50%);
+            transform: translate3d(0, 0, 0) translate(-50%, -50%);
             box-shadow: 0 0 12px rgba(0,255,136,0.6);
-            transition: left 0.05s, top 0.05s;
+            transition: opacity 0.1s ease, box-shadow 0.1s ease;
         `;
         document.body.appendChild(cursor);
     }
-    cursor.style.left = viewX + 'px';
-    cursor.style.top  = viewY + 'px';
+    cursor.style.transform = `translate3d(${viewX}px, ${viewY}px, 0) translate(-50%, -50%)`;
 }
 
 function handleKeyPress(key, btn) {
@@ -411,8 +463,8 @@ function clearText() {
 }
 
 function setupVoiceControls() {
-    if (window.AssistiveHandsVoice) {
-        voiceListening = window.AssistiveHandsVoice.isListening();
+    if (window.AssistiveHandsVoice || window.AssistiveHandsGlobalVoiceOwner) {
+        voiceListening = Boolean(window.AssistiveHandsVoice && window.AssistiveHandsVoice.isListening());
         updateVoiceStatus(voiceListening ? 'Listening' : 'Click Voice to start', voiceListening ? 'listening' : 'idle');
         updateVoiceButton();
         return;
@@ -876,7 +928,12 @@ Object.assign(window, {
 });
 
 window.addEventListener('beforeunload', () => {
-    clearInterval(gazeUpdateInterval);
+    gazeTrackingStopped = true;
+    clearTimeout(gazeUpdateInterval);
+    if (telemetryUnsubscribe) {
+        telemetryUnsubscribe();
+        telemetryUnsubscribe = null;
+    }
     cancelAllDwell();
     stopVoiceRecognition();
 });
